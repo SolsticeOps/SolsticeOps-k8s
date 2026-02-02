@@ -1,0 +1,13 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="small">
+        <span class="text-muted">Context:</span> <span class="badge bg-light text-dark border">{{ k8s_context }}</span>
+    </div>
+    <div class="d-flex gap-2">
+        <select class="form-select form-select-sm" style="width: 200px;" onchange="filterByNamespace(this.value)">
+            <option value="">All Namespaces</option>
+            {% for ns in k8s_namespaces %}
+            <option value="{{ ns.metadata.name }}" {% if current_namespace == ns.metadata.name %}selected{% endif %}>{{ ns.metadata.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>

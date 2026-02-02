@@ -45,6 +45,26 @@ class Module(BaseModule):
     module_name = "Kubernetes"
     description = "Manage Kubernetes clusters, pods, deployments and services."
 
+    def get_icon_class(self):
+        return "kubernetes"
+
+    def get_logs_url(self, tool):
+        return '/k8s/pods/logs/'
+
+    def get_resource_header_template_name(self):
+        return "core/modules/k8s_resource_header.html"
+
+    def get_resource_tabs(self):
+        return [
+            {'id': 'pods', 'label': 'Pods', 'template': 'core/partials/k8s_pods.html', 'hx_get': '/tool/k8s/?tab=k8s_pods', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'deployments', 'label': 'Deployments', 'template': 'core/partials/k8s_deployments.html', 'hx_get': '/tool/k8s/?tab=k8s_deployments', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'services', 'label': 'Services', 'template': 'core/partials/k8s_services.html', 'hx_get': '/tool/k8s/?tab=k8s_services', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'nodes', 'label': 'Nodes', 'template': 'core/partials/k8s_nodes.html', 'hx_get': '/tool/k8s/?tab=k8s_nodes', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'configmaps', 'label': 'ConfigMaps', 'template': 'core/partials/k8s_configmaps.html', 'hx_get': '/tool/k8s/?tab=k8s_configmaps', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'secrets', 'label': 'Secrets', 'template': 'core/partials/k8s_secrets.html', 'hx_get': '/tool/k8s/?tab=k8s_secrets', 'hx_auto_refresh': 'every 5s'},
+            {'id': 'events', 'label': 'Events', 'template': 'core/partials/k8s_events.html', 'hx_get': '/tool/k8s/?tab=k8s_events', 'hx_auto_refresh': 'every 5s'},
+        ]
+
     def get_context_data(self, request, tool):
         context = {}
         if tool.status == 'installed' and K8S_AVAILABLE:
