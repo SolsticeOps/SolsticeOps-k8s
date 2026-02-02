@@ -1,0 +1,9 @@
+<div class="bg-dark text-light p-3 rounded">
+    <div id="pod-shell-output" class="small mb-3" style="height: 400px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap;">Connected to {{ namespace }}/{{ pod_name }}.</div>
+    <div class="input-group">
+        <span class="input-group-text bg-secondary border-0 text-white">#</span>
+        <input type="text" id="pod-shell-input" class="form-control bg-dark text-light border-secondary" placeholder="ls -la" 
+               onkeydown="if(event.keyCode==13) runPodShell('{{ namespace }}', '{{ pod_name }}')">
+        <button class="btn btn-primary" onclick="runPodShell('{{ namespace }}', '{{ pod_name }}')">Send</button>
+    </div>
+</div>

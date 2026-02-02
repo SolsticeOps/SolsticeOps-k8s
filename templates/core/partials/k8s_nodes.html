@@ -1,0 +1,52 @@
+<div class="row g-3">
+    {% for node in k8s_nodes %}
+    <div class="col-12">
+        <div class="card border-opacity-50">
+            <div class="card-body p-3">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-box bg-light rounded-3 p-2 me-3 d-flex align-items-center justify-content-center" style="width: 42px; height: 42px; background-color: var(--icon-box) !important;">
+                            <i class="bi bi-server fs-5 text-primary"></i>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <h6 class="mb-0 fw-bold text-main">{{ node.metadata.name }}</h6>
+                                {% for condition in node.status.conditions %}
+                                    {% if condition.type == 'Ready' %}
+                                        <span class="badge {% if condition.status == 'True' %}bg-success-subtle text-success border border-success-subtle{% else %}bg-danger-subtle text-danger border border-danger-subtle{% endif %} d-inline-flex align-items-center justify-content-center px-2" style="font-size: 0.6rem; text-transform: uppercase; min-width: 65px; border-radius: 6px;">
+                                            {% if condition.status == 'True' %}Ready{% else %}NotReady{% endif %}
+                                        </span>
+                                    {% endif %}
+                                {% endfor %}
+                                {% for key, value in node.metadata.labels.items %}
+                                    {% if "node-role.kubernetes.io/" in key %}
+                                        <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size: 0.6rem; text-transform: uppercase; border-radius: 6px;">{{ key|slice:"24:" }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div class="text-muted small font-monospace">
+                                Version: {{ node.status.node_info.kubelet_version }} • IP: {% for addr in node.status.addresses %}{% if addr.type == 'InternalIP' %}{{ addr.address }}{% endif %}{% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-1 border-start ps-4">
+                        <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
+                                title="Describe" style="background-color: var(--icon-box) !important;"
+                                onclick="openDescribe('node', null, '{{ node.metadata.name }}')">
+                            <i class="bi bi-info-circle text-primary"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="text-center py-5 border border-dashed rounded-3 text-muted">
+            <i class="bi bi-server fs-1 mb-3 d-block opacity-25"></i>
+            No nodes found.
+        </div>
+    </div>
+    {% endfor %}
+</div>

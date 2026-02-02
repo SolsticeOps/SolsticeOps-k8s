@@ -1,0 +1,40 @@
+<div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Data Keys</th>
+                <th>Age</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cm in k8s_configmaps %}
+            <tr>
+                <td class="fw-bold text-primary">{{ cm.metadata.name }}</td>
+                <td><span class="badge bg-secondary">{{ cm.metadata.namespace }}</span></td>
+                <td>
+                    {% for key in cm.data.keys %}
+                    <span class="badge bg-light text-dark border">{{ key }}</span>
+                    {% endfor %}
+                </td>
+                <td class="small">{{ cm.metadata.creation_timestamp|timesince }}</td>
+                <td class="text-end">
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-info" 
+                                title="Edit YAML"
+                                onclick="openYamlEditor('configmap', '{{ cm.metadata.namespace }}', '{{ cm.metadata.name }}')">
+                            <i class="bi bi-pencil-square"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="text-center py-4 text-muted">No ConfigMaps found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
