@@ -1,0 +1,62 @@
+<script>
+    function filterByNamespace(ns) {
+        var url = new URL(window.location.href);
+        if (ns) url.searchParams.set('namespace', ns);
+        else url.searchParams.delete('namespace');
+        window.location.href = url.toString();
+    }
+
+    function openDescribe(type, ns, name) {
+        document.getElementById('describeTitle').innerText = 'Describe ' + type + ': ' + name;
+        document.getElementById('describeContent').innerHTML = '<div class="p-5 text-center"><div class="spinner-border text-light"></div></div>';
+        var modal = new bootstrap.Modal(document.getElementById('describeModal'));
+        modal.show();
+        
+        var url = '/k8s/resource/describe/' + type + '/';
+        if (ns) {
+            url += ns + '/' + name + '/';
+        } else {
+            url += name + '/';
+        }
+        
+        fetch(url)
+            .then(function(r) { return r.text(); })
+            .then(function(data) {
+                document.getElementById('describeContent').innerText = data;
+            });
+    }
+
+    function openPodLogs(ns, name) {
+        openLogs('/k8s/pod/' + ns + '/' + name + '/logs/');
+    }
+
+    function openPodShell(ns, name) {
+        openTerminal('ws/k8s/shell/' + ns + '/' + name + '/', ns + '/' + name, name);
+    }
+
+    var currentYamlContext = {};
+    var aceEditor;
+    function openYamlEditor(type, namespace, name) {
+        currentYamlContext = { type: type, namespace: namespace, name: name };
+        fetch('/k8s/resource/yaml/' + type + '/' + namespace + '/' + name + '/')
+            .then(function(r) { return r.text(); })
+            .then(function(yaml) {
+                if (!aceEditor) {
+                    aceEditor = ace.edit("yamlEditor");
+                    aceEditor.setTheme("ace/theme/monokai");
+                    aceEditor.session.setMode("ace/mode/yaml");
+                }
+                aceEditor.setValue(yaml, -1);
+                new bootstrap.Modal(document.getElementById('yamlModal')).show();
+            });
+    }
+
+    function saveYaml() {
+        var ctx = currentYamlContext;
+        var formData = new FormData();
+        formData.append('yaml', aceEditor.getValue());
+        formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+        fetch('/k8s/resource/yaml/' + ctx.type + '/' + ctx.namespace + '/' + ctx.name + '/', { method: 'POST', body: formData })
+            .then(function(r) { if (r.ok) location.reload(); else r.text().then(alert); });
+    }
+</script>

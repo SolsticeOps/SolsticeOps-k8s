@@ -48,6 +48,9 @@ class Module(BaseModule):
     def get_icon_class(self):
         return "kubernetes"
 
+    def get_extra_content_template_name(self):
+        return "core/modules/k8s_scripts.html"
+
     def get_logs_url(self, tool):
         return '/k8s/pods/logs/'
 
@@ -110,4 +113,16 @@ class Module(BaseModule):
         return {'k8s': K8sSession}
 
     def get_urls(self):
-        return []
+        from . import views
+        return [
+            path('k8s/pod/<str:namespace>/<str:pod_name>/logs/', views.k8s_pod_logs, name='k8s_pod_logs'),
+            path('k8s/pod/<str:namespace>/<str:pod_name>/logs/download/', views.k8s_pod_logs_download, name='k8s_pod_logs_download'),
+            path('k8s/pod/<str:namespace>/<str:pod_name>/act/<str:action>/', views.k8s_pod_action, name='k8s_pod_action'),
+            path('k8s/resource/yaml/<str:resource_type>/<str:namespace>/<str:name>/', views.k8s_resource_yaml, name='k8s_resource_yaml'),
+            path('k8s/terminal/run/', views.k8s_terminal_run, name='k8s_terminal_run'),
+            path('k8s/pod/<str:namespace>/<str:pod_name>/shell/', views.k8s_pod_shell, name='k8s_pod_shell'),
+            path('k8s/deployment/<str:namespace>/<str:name>/scale/<int:replicas>/', views.k8s_deployment_scale, name='k8s_deployment_scale'),
+            path('k8s/deployment/<str:namespace>/<str:name>/restart/', views.k8s_deployment_restart, name='k8s_deployment_restart'),
+            path('k8s/resource/describe/<str:resource_type>/<str:name>/', views.k8s_resource_describe, {'namespace': ''}, name='k8s_resource_describe_cluster'),
+            path('k8s/resource/describe/<str:resource_type>/<str:namespace>/<str:name>/', views.k8s_resource_describe, name='k8s_resource_describe'),
+        ]
