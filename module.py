@@ -73,15 +73,33 @@ class Module(BaseModule):
         if tool.status == 'installed' and K8S_AVAILABLE:
             try:
                 config.load_kube_config()
+                
+                # Get current context
+                try:
+                    contexts, active_context = config.list_kube_config_contexts()
+                    context['k8s_context'] = active_context['name'] if active_context else 'N/A'
+                except:
+                    context['k8s_context'] = 'Unknown'
+
                 v1 = client.CoreV1Api()
                 apps_v1 = client.AppsV1Api()
                 namespace = request.GET.get('namespace')
                 
                 if namespace:
                     context['k8s_pods'] = v1.list_namespaced_pod(namespace).items
+                    context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace).items
+                    context['k8s_services'] = v1.list_namespaced_service(namespace).items
+                    context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace).items
+                    context['k8s_secrets'] = v1.list_namespaced_secret(namespace).items
+                    context['k8s_events'] = v1.list_namespaced_event(namespace).items
                     context['current_namespace'] = namespace
                 else:
                     context['k8s_pods'] = v1.list_pod_for_all_namespaces().items
+                    context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces().items
+                    context['k8s_services'] = v1.list_service_for_all_namespaces().items
+                    context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces().items
+                    context['k8s_secrets'] = v1.list_secret_for_all_namespaces().items
+                    context['k8s_events'] = v1.list_event_for_all_namespaces().items
                 
                 context['k8s_nodes'] = v1.list_node().items
                 context['k8s_namespaces'] = v1.list_namespace().items
