@@ -189,3 +189,12 @@ def k8s_terminal_run(request):
 @login_required
 def k8s_pod_shell(request, namespace, pod_name):
     return HttpResponse("Shell initialised")
+
+@login_required
+def k8s_service_logs(request):
+    try:
+        # Try to get kubelet logs as a proxy for K8s service logs
+        output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
+        return HttpResponse(output, content_type='text/plain')
+    except Exception as e:
+        return HttpResponse(f"Error fetching system logs: {str(e)}", status=500)

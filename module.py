@@ -52,10 +52,7 @@ class Module(BaseModule):
         return "core/modules/k8s_scripts.html"
 
     def get_logs_url(self, tool):
-        # Service logs for K8s are not directly applicable since it's a cluster management tool,
-        # but we can point to events or a general overview.
-        # For now, we'll return None to hide the button if it's not meaningful as a service log.
-        return None
+        return '/k8s/service/logs/'
 
     def get_resource_header_template_name(self):
         return "core/modules/k8s_resource_header.html"
@@ -138,6 +135,7 @@ class Module(BaseModule):
         return [
             path('k8s/pod/<str:namespace>/<str:pod_name>/logs/', views.k8s_pod_logs, name='k8s_pod_logs'),
             path('k8s/pod/<str:namespace>/<str:pod_name>/logs/download/', views.k8s_pod_logs_download, name='k8s_pod_logs_download'),
+            path('k8s/service/logs/', views.k8s_service_logs, name='k8s_service_logs'),
             path('k8s/pod/<str:namespace>/<str:pod_name>/act/<str:action>/', views.k8s_pod_action, name='k8s_pod_action'),
             path('k8s/resource/yaml/<str:resource_type>/<str:namespace>/<str:name>/', views.k8s_resource_yaml, name='k8s_resource_yaml'),
             path('k8s/terminal/run/', views.k8s_terminal_run, name='k8s_terminal_run'),
