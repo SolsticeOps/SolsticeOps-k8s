@@ -92,8 +92,18 @@ class Module(BaseModule):
         context['tool'] = tool
         if target == 'k8s_pods':
             return render(request, 'core/partials/k8s_pods.html', context)
+        elif target == 'k8s_deployments':
+            return render(request, 'core/partials/k8s_deployments.html', context)
+        elif target == 'k8s_services':
+            return render(request, 'core/partials/k8s_services.html', context)
         elif target == 'k8s_nodes':
             return render(request, 'core/partials/k8s_nodes.html', context)
+        elif target == 'k8s_configmaps':
+            return render(request, 'core/partials/k8s_configmaps.html', context)
+        elif target == 'k8s_secrets':
+            return render(request, 'core/partials/k8s_secrets.html', context)
+        elif target == 'k8s_events':
+            return render(request, 'core/partials/k8s_events.html', context)
         return None
 
     def get_terminal_session_types(self):
