@@ -193,8 +193,18 @@ def k8s_pod_shell(request, namespace, pod_name):
 @login_required
 def k8s_service_logs(request):
     try:
-        # Try to get kubelet logs as a proxy for K8s service logs
-        output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
+        # Try journalctl without sudo first
+        try:
+            output = subprocess.check_output(['journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
+            if "Hint: You are currently not seeing messages" in output:
+                raise subprocess.CalledProcessError(1, 'journalctl')
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback to sudo if the first one fails or is restricted
+            output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
+        
+        if not output.strip() or "No entries" in output:
+            return HttpResponse("No log entries found. Ensure the 'kubelet' service is running and you have permissions to view logs (group 'systemd-journal' or 'adm').", content_type='text/plain')
+
         return HttpResponse(output, content_type='text/plain')
     except Exception as e:
         return HttpResponse(f"Error fetching system logs: {str(e)}", status=500)
