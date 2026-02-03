@@ -54,6 +54,15 @@ class Module(BaseModule):
 
     def get_service_version(self):
         try:
+            # Try to get server version via API
+            if K8S_AVAILABLE:
+                try:
+                    config.load_kube_config()
+                    version_info = client.VersionApi().get_code()
+                    return version_info.git_version
+                except:
+                    pass
+
             process = subprocess.run(["kubectl", "version", "--client", "--short"], capture_output=True, text=True)
             if process.returncode == 0:
                 # Output is like "Client Version: v1.28.2"
