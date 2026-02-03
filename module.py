@@ -169,6 +169,7 @@ class Module(BaseModule):
             path('k8s/pod/<str:namespace>/<str:pod_name>/logs/', views.k8s_pod_logs, name='k8s_pod_logs'),
             path('k8s/pod/<str:namespace>/<str:pod_name>/logs/download/', views.k8s_pod_logs_download, name='k8s_pod_logs_download'),
             path('k8s/service/logs/', views.k8s_service_logs, name='k8s_service_logs'),
+            path('k8s/service/logs/download/', views.k8s_service_logs_download, name='k8s_service_logs_download'),
             path('k8s/pod/<str:namespace>/<str:pod_name>/act/<str:action>/', views.k8s_pod_action, name='k8s_pod_action'),
             path('k8s/resource/yaml/<str:resource_type>/<str:namespace>/<str:name>/', views.k8s_resource_yaml, name='k8s_resource_yaml'),
             path('k8s/terminal/run/', views.k8s_terminal_run, name='k8s_terminal_run'),

@@ -224,3 +224,21 @@ def k8s_service_logs(request):
         return HttpResponse(output, content_type='text/plain')
     except Exception as e:
         return HttpResponse(f"Error fetching system logs: {str(e)}", status=500)
+
+@login_required
+def k8s_service_logs_download(request):
+    try:
+        # Try journalctl without sudo first
+        try:
+            output = subprocess.check_output(['journalctl', '-u', 'kubelet', '--no-pager'], stderr=subprocess.STDOUT).decode()
+            if "Hint: You are currently not seeing messages" in output:
+                raise subprocess.CalledProcessError(1, 'journalctl')
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback to sudo if the first one fails or is restricted
+            output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '--no-pager'], stderr=subprocess.STDOUT).decode()
+        
+        response = HttpResponse(output, content_type='text/plain')
+        response['Content-Disposition'] = 'attachment; filename="k8s_service_logs.log"'
+        return response
+    except Exception as e:
+        return HttpResponse(f"Error downloading system logs: {str(e)}", status=500)
