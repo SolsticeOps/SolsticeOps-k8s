@@ -52,6 +52,23 @@ class Module(BaseModule):
     description = "Manage Kubernetes clusters, pods, deployments and services."
     version = "1.0.0"
 
+    def get_service_version(self):
+        try:
+            process = subprocess.run(["kubectl", "version", "--client", "--short"], capture_output=True, text=True)
+            if process.returncode == 0:
+                # Output is like "Client Version: v1.28.2"
+                return process.stdout.strip().split(":")[-1].strip()
+            # Try without --short for newer kubectl
+            process = subprocess.run(["kubectl", "version", "--client"], capture_output=True, text=True)
+            if process.returncode == 0:
+                import re
+                match = re.search(r'GitVersion:"(v[^"]+)"', process.stdout)
+                if match:
+                    return match.group(1)
+        except Exception:
+            pass
+        return None
+
     def get_icon_class(self):
         return "kubernetes"
 
