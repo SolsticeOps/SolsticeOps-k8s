@@ -134,19 +134,22 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
         
         strip_read_only(resource_dict)
 
-        # Custom YAML dumper for better readability (multiline strings and block indentation)
+        # Custom YAML dumper for better readability
         class K8sDumper(yaml.SafeDumper):
             def increase_indent(self, flow=False, indentless=False):
                 return super(K8sDumper, self).increase_indent(flow, False)
 
         def str_presenter(dumper, data):
+            # Normalize newlines
+            data = data.replace('\r\n', '\n').replace('\r', '\n')
             if '\n' in data:
                 return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
             return dumper.represent_scalar('tag:yaml.org,2002:str', data)
         
         K8sDumper.add_representer(str, str_presenter)
         
-        yaml_content = yaml.dump(resource_dict, Dumper=K8sDumper, default_flow_style=False, sort_keys=False)
+        # Use a larger indent to ensure block scalars are clearly separated
+        yaml_content = yaml.dump(resource_dict, Dumper=K8sDumper, default_flow_style=False, sort_keys=False, indent=4)
         
         if request.method == 'POST':
             new_yaml_str = request.POST.get('yaml')
