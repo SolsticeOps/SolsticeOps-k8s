@@ -41,8 +41,14 @@ class K8sSession(TerminalSession):
             self.stream.write_stdin(data)
 
 class Module(BaseModule):
-    module_id = "k8s"
-    module_name = "Kubernetes"
+    @property
+    def module_id(self):
+        return "k8s"
+
+    @property
+    def module_name(self):
+        return "Kubernetes"
+
     description = "Manage Kubernetes clusters, pods, deployments and services."
 
     def get_icon_class(self):
