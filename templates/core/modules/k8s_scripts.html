@@ -45,6 +45,7 @@
                     aceEditor = ace.edit("yamlEditor");
                     aceEditor.setTheme("ace/theme/monokai");
                     aceEditor.session.setMode("ace/mode/yaml");
+                    aceEditor.setShowPrintMargin(false);
                 }
                 aceEditor.setValue(yaml, -1);
                 new bootstrap.Modal(document.getElementById('yamlModal')).show();
