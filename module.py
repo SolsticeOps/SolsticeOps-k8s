@@ -50,6 +50,7 @@ class Module(BaseModule):
         return "Kubernetes"
 
     description = "Manage Kubernetes clusters, pods, deployments and services."
+    version = "1.0.0"
 
     def get_icon_class(self):
         return "kubernetes"
