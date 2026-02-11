@@ -217,7 +217,7 @@ class Module(BaseModule):
                 ("Adding Kubernetes repository...", "bash -c 'echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /\" | tee /etc/apt/sources.list.d/kubernetes.list'"),
                 ("Updating package index...", "apt-get update"),
                 ("Installing K8s components (kubeadm, kubelet, kubectl)...", "apt-get install -y kubelet kubeadm kubectl && apt-mark hold kubelet kubeadm kubectl"),
-                ("Disabling SWAP (Required for K8s)...", "swapoff -a && sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab"),
+                ("Disabling SWAP (Required for K8s)...", r"swapoff -a && sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab"),
                 ("Initializing Kubernetes cluster...", "bash -c 'kubeadm init --pod-network-cidr=10.244.0.0/16 || true'"),
                 ("Setting up kubeconfig...", "bash -c 'mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config'"),
                 ("Installing Network Plugin (Flannel)...", "bash -c 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml'"),
