@@ -4,6 +4,7 @@ import yaml
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
+from core.utils import run_sudo_command
 try:
     from kubernetes import client as k8s_client, config as k8s_config
     K8S_AVAILABLE = True
@@ -96,7 +97,9 @@ def k8s_resource_describe(request, resource_type, namespace, name):
         cmd = ['kubectl', 'describe', resource_type, name]
         if namespace:
             cmd.extend(['-n', namespace])
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode()
+        # Kubectl might need sudo if kubeconfig is restricted, but usually it doesn't.
+        # However, for consistency we use run_sudo_command which will fallback to non-sudo if password not set.
+        output = run_sudo_command(cmd).decode()
         return HttpResponse(output)
     except Exception as e:
         return HttpResponse(str(e), status=500)
@@ -193,11 +196,10 @@ def k8s_terminal_run(request):
             display_prompt = f"$ {command}"
         
         try:
-            env = os.environ.copy()
-            output = subprocess.check_output(full_command, shell=True, stderr=subprocess.STDOUT, env=env).decode()
+            output = run_sudo_command(full_command, shell=True).decode()
             return HttpResponse(f"{display_prompt}\n{output}")
         except subprocess.CalledProcessError as e:
-            return HttpResponse(f"{display_prompt}\nError: {e.output.decode()}")
+            return HttpResponse(f"{display_prompt}\nError: {e.output.decode() if e.output else str(e)}")
         except Exception as e:
             return HttpResponse(f"Error: {str(e)}")
     return HttpResponse("Invalid request", status=400)
@@ -216,7 +218,7 @@ def k8s_service_logs(request):
                 raise subprocess.CalledProcessError(1, 'journalctl')
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to sudo if the first one fails or is restricted
-            output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
+            output = run_sudo_command(['journalctl', '-u', 'kubelet', '-n', '200', '--no-pager']).decode()
         
         if not output.strip() or "No entries" in output:
             return HttpResponse("No log entries found. Ensure the 'kubelet' service is running and you have permissions to view logs (group 'systemd-journal' or 'adm').", content_type='text/plain')
@@ -235,7 +237,7 @@ def k8s_service_logs_download(request):
                 raise subprocess.CalledProcessError(1, 'journalctl')
         except (subprocess.CalledProcessError, FileNotFoundError):
             # Fallback to sudo if the first one fails or is restricted
-            output = subprocess.check_output(['sudo', '-n', 'journalctl', '-u', 'kubelet', '--no-pager'], stderr=subprocess.STDOUT).decode()
+            output = run_sudo_command(['journalctl', '-u', 'kubelet', '--no-pager']).decode()
         
         response = HttpResponse(output, content_type='text/plain')
         response['Content-Disposition'] = 'attachment; filename="k8s_service_logs.log"'
