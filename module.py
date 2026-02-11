@@ -98,20 +98,22 @@ class Module(BaseModule):
                 except:
                     pass
 
-            cmd = ['kubectl', 'version', '--client', '--short']
-            process = run_sudo_command(cmd, capture_output=True, env=env)
-            if process:
-                # Output is like "Client Version: v1.28.2"
-                return process.decode().strip().split(":")[-1].strip()
-            
-            # Try without --short for newer kubectl
             cmd = ['kubectl', 'version', '--client']
             process = run_sudo_command(cmd, capture_output=True, env=env)
             if process:
                 import re
-                match = re.search(r'GitVersion:"(v[^"]+)"', process.decode())
+                output = process.decode()
+                # Try to find version in newer format (GitVersion:"v1.29.1") or older format (Client Version: v1.28.2)
+                match = re.search(r'GitVersion:"(v[^"]+)"', output)
                 if match:
                     return match.group(1)
+                match = re.search(r'Client Version:\s+(v[0-9.]+)', output)
+                if match:
+                    return match.group(1)
+                # Fallback: just return the first line if it looks like a version
+                first_line = output.splitlines()[0]
+                if 'Version' in first_line:
+                    return first_line.strip()
         except Exception:
             pass
         return None
