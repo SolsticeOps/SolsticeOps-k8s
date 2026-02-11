@@ -13,7 +13,7 @@ except ImportError:
     K8S_AVAILABLE = False
 
 def get_kubeconfig():
-    """Returns the path to the kubeconfig file if it exists and is accessible."""
+    """Returns the path to the kubeconfig file if it exists and is accessible by the current process."""
     paths = [
         '/etc/kubernetes/admin.conf',
         '/etc/rancher/k3s/k3s.yaml',
@@ -22,19 +22,11 @@ def get_kubeconfig():
         '/root/.kube/config'
     ]
     for p in paths:
-        try:
-            # Use a shell command that doesn't produce error output if file is missing
-            cmd = f"bash -c '[ -f {p} ] && echo {p}'"
-            # We use run_sudo_command with shell=True. 
-            # To avoid the logger.error in core/utils.py, we need the command to return 0.
-            # But wait, run_sudo_command with shell=True wraps it: echo 'pass' | sudo -S cmd
-            # If cmd is '[ -f /none ] && echo exists', it returns 1.
-            # So we do: '[ -f /none ] && echo exists || true'
-            check = run_sudo_command(f"[ -f {p} ] && echo {p} || true", shell=True, capture_output=True, log_errors=False).decode().strip()
-            if check == p:
-                return p
-        except:
-            continue
+        if os.path.exists(p) and os.access(p, os.R_OK):
+            return p
+    
+    # If no directly readable file found, we can't load it in Python easily
+    # unless we copy it to a readable location.
     return None
 
 class K8sSession(TerminalSession):
@@ -144,17 +136,25 @@ class Module(BaseModule):
 
     def get_context_data(self, request, tool):
         context = {}
-        if tool.status == 'installed' and K8S_AVAILABLE:
+        if tool.status == 'installed':
+            if not K8S_AVAILABLE:
+                context['k8s_error'] = "The 'kubernetes' Python library is not installed. Please install it to manage Kubernetes clusters."
+                return context
+            
             try:
                 kconfig = get_kubeconfig()
+                if not kconfig:
+                    context['k8s_error'] = "No readable kubeconfig found. Ensure Kubernetes is installed and the config file is readable."
+                    return context
+
                 config.load_kube_config(config_file=kconfig)
                 
                 # Get current context
                 try:
-                    contexts, active_context = config.list_kube_config_contexts()
+                    contexts, active_context = config.list_kube_config_contexts(config_file=kconfig)
                     context['k8s_context'] = active_context['name'] if active_context else 'N/A'
-                except:
-                    context['k8s_context'] = 'Unknown'
+                except Exception as e:
+                    context['k8s_context'] = f'Error: {str(e)}'
 
                 v1 = client.CoreV1Api()
                 apps_v1 = client.AppsV1Api()
@@ -220,9 +220,11 @@ class Module(BaseModule):
                 ("Disabling SWAP (Required for K8s)...", "bash -c 'swapoff -a && sed -i \"/ swap / s/^\\(.*\\)$/#\\1/g\" /etc/fstab'"),
                 ("Loading kernel modules...", "bash -c 'modprobe overlay && modprobe br_netfilter'"),
                 ("Configuring sysctl for K8s...", "bash -c 'echo -e \"net.bridge.bridge-nf-call-iptables = 1\\nnet.bridge.bridge-nf-call-ip6tables = 1\\nnet.ipv4.ip_forward = 1\" | tee /etc/sysctl.d/k8s.conf && sysctl --system'"),
+                ("Configuring firewalld ports...", "bash -c 'if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-port=6443/tcp && firewall-cmd --permanent --add-port=10250/tcp && firewall-cmd --reload; fi'"),
                 ("Configuring containerd (CRI)...", "bash -c 'mkdir -p /etc/containerd && containerd config default | tee /etc/containerd/config.toml > /dev/null && sed -i \"s/SystemdCgroup = false/SystemdCgroup = true/g\" /etc/containerd/config.toml && systemctl restart containerd'"),
+                ("Pulling Kubernetes images...", "kubeadm config images pull"),
                 ("Initializing Kubernetes cluster...", "bash -c 'kubeadm init --pod-network-cidr=10.244.0.0/16 || true'"),
-                ("Setting up kubeconfig...", "bash -c 'mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config'"),
+                ("Setting up kubeconfig...", "bash -c 'mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /etc/kubernetes/admin.conf && chmod 644 /root/.kube/config'"),
                 ("Installing Network Plugin (Flannel)...", "bash -c 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml'"),
                 ("Allowing pods on control-plane...", "bash -c 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true'"),
             ]
