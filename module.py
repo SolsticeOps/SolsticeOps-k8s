@@ -1,8 +1,10 @@
 import subprocess
+import threading
 from django.shortcuts import render, redirect
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
+from core.utils import run_sudo_command
 try:
     from kubernetes import client, config, stream
     K8S_AVAILABLE = True
@@ -159,6 +161,37 @@ class Module(BaseModule):
         elif target == 'k8s_events':
             return render(request, 'core/partials/k8s_events.html', context)
         return None
+
+    def install(self, request, tool):
+        if tool.status != 'not_installed':
+            return
+
+        tool.status = 'installing'
+        tool.save()
+
+        def run_install():
+            stages = [
+                ("Updating apt repositories...", "apt-get update"),
+                ("Installing dependencies...", "apt-get install -y ca-certificates curl gnupg"),
+                ("Setting up Kubernetes GPG key...", "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes"),
+                ("Adding Kubernetes repository...", "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list"),
+                ("Updating package index...", "apt-get update"),
+                ("Installing kubectl...", "apt-get install -y kubectl"),
+            ]
+            try:
+                for stage_name, command in stages:
+                    tool.current_stage = stage_name
+                    tool.save()
+                    run_sudo_command(command, shell=True, capture_output=False)
+                
+                tool.status = 'installed'
+                tool.current_stage = "Installation completed successfully"
+            except Exception as e:
+                tool.status = 'error'
+                tool.config_data['error_log'] = str(e)
+            tool.save()
+
+        threading.Thread(target=run_install).start()
 
     def get_terminal_session_types(self):
         return {'k8s': K8sSession}
