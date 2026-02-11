@@ -211,17 +211,21 @@ def k8s_pod_shell(request, namespace, pod_name):
 @login_required
 def k8s_service_logs(request):
     try:
-        # Try journalctl without sudo first
-        try:
-            output = subprocess.check_output(['journalctl', '-u', 'kubelet', '-n', '200', '--no-pager'], stderr=subprocess.STDOUT).decode()
-            if "Hint: You are currently not seeing messages" in output:
-                raise subprocess.CalledProcessError(1, 'journalctl')
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # Fallback to sudo if the first one fails or is restricted
-            output = run_sudo_command(['journalctl', '-u', 'kubelet', '-n', '200', '--no-pager']).decode()
+        # We'll try to find any relevant service logs
+        services = ['kubelet', 'k3s', 'microk8s']
+        output = ""
+        
+        for service in services:
+            try:
+                # Try journalctl with sudo
+                output = run_sudo_command(['journalctl', '-u', service, '-n', '200', '--no-pager']).decode()
+                if output.strip() and "No entries" not in output:
+                    break
+            except:
+                continue
         
         if not output.strip() or "No entries" in output:
-            return HttpResponse("No log entries found. Ensure the 'kubelet' service is running and you have permissions to view logs (group 'systemd-journal' or 'adm').", content_type='text/plain')
+            return HttpResponse("No log entries found. Ensure a Kubernetes service (kubelet, k3s, or microk8s) is running and accessible.", content_type='text/plain')
 
         return HttpResponse(output, content_type='text/plain')
     except Exception as e:
@@ -230,14 +234,16 @@ def k8s_service_logs(request):
 @login_required
 def k8s_service_logs_download(request):
     try:
-        # Try journalctl without sudo first
-        try:
-            output = subprocess.check_output(['journalctl', '-u', 'kubelet', '--no-pager'], stderr=subprocess.STDOUT).decode()
-            if "Hint: You are currently not seeing messages" in output:
-                raise subprocess.CalledProcessError(1, 'journalctl')
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # Fallback to sudo if the first one fails or is restricted
-            output = run_sudo_command(['journalctl', '-u', 'kubelet', '--no-pager']).decode()
+        services = ['kubelet', 'k3s', 'microk8s']
+        output = ""
+        
+        for service in services:
+            try:
+                output = run_sudo_command(['journalctl', '-u', service, '--no-pager']).decode()
+                if output.strip() and "No entries" not in output:
+                    break
+            except:
+                continue
         
         response = HttpResponse(output, content_type='text/plain')
         response['Content-Disposition'] = 'attachment; filename="k8s_service_logs.log"'
