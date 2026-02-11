@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
-from core.utils import run_sudo_command
+from core.utils import run_command
 try:
     from kubernetes import client, config, stream
     K8S_AVAILABLE = True
@@ -90,7 +90,7 @@ class Module(BaseModule):
                     pass
 
             cmd = ['kubectl', 'version', '--client']
-            process = run_sudo_command(cmd, capture_output=True, env=env, log_errors=False)
+            process = run_command(cmd, capture_output=True, env=env, log_errors=False)
             if process:
                 import re
                 output = process.decode()
@@ -157,7 +157,7 @@ class Module(BaseModule):
                         env = os.environ.copy()
                         env['KUBECONFIG'] = kconfig
                         cmd = ['kubectl', 'config', 'current-context']
-                        out = run_sudo_command(cmd, capture_output=True, env=env, log_errors=False)
+                        out = run_command(cmd, capture_output=True, env=env, log_errors=False)
                         context['k8s_context'] = out.decode().strip() if out else 'N/A'
                 except Exception as e:
                     context['k8s_context'] = f'Error: {str(e)}'
@@ -238,7 +238,7 @@ class Module(BaseModule):
                 for stage_name, command in stages:
                     tool.current_stage = stage_name
                     tool.save()
-                    run_sudo_command(command, shell=True, capture_output=False, timeout=600)
+                    run_command(command, shell=True, capture_output=False, timeout=600)
                 
                 tool.status = 'installed'
                 tool.current_stage = "Installation completed successfully"

@@ -4,7 +4,7 @@ import yaml
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
-from core.utils import run_sudo_command
+from core.utils import run_command
 from .module import get_kubeconfig
 try:
     from kubernetes import client as k8s_client, config as k8s_config
@@ -106,7 +106,7 @@ def k8s_resource_describe(request, resource_type, namespace, name):
         if namespace:
             cmd.extend(['-n', namespace])
         
-        output = run_sudo_command(cmd, env=env).decode()
+        output = run_command(cmd, env=env).decode()
         return HttpResponse(output)
     except Exception as e:
         return HttpResponse(str(e), status=500)
@@ -167,8 +167,8 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
                 if kconfig:
                     env['KUBECONFIG'] = kconfig
 
-                # Use run_sudo_command for apply
-                run_sudo_command(['kubectl', 'apply', '-f', '-'], input_data=new_yaml_str, env=env)
+                # Use run_command for apply
+                run_command(['kubectl', 'apply', '-f', '-'], input_data=new_yaml_str, env=env)
                 return HttpResponse("Resource updated successfully.", status=200)
             except Exception as e:
                 return HttpResponse(f"Update failed: {str(e)}", status=500)
@@ -201,7 +201,7 @@ def k8s_terminal_run(request):
             display_prompt = f"$ {command}"
         
         try:
-            output = run_sudo_command(full_command, shell=True, env=env).decode()
+            output = run_command(full_command, shell=True, env=env).decode()
             return HttpResponse(f"{display_prompt}\n{output}")
         except subprocess.CalledProcessError as e:
             return HttpResponse(f"{display_prompt}\nError: {e.output.decode() if e.output else str(e)}")
@@ -223,7 +223,7 @@ def k8s_service_logs(request):
         for service in services:
             try:
                 # Try journalctl with sudo
-                output = run_sudo_command(['journalctl', '-u', service, '-n', '200', '--no-pager']).decode()
+                output = run_command(['journalctl', '-u', service, '-n', '200', '--no-pager']).decode()
                 if output.strip() and "No entries" not in output:
                     break
             except:
@@ -244,7 +244,7 @@ def k8s_service_logs_download(request):
         
         for service in services:
             try:
-                output = run_sudo_command(['journalctl', '-u', service, '--no-pager']).decode()
+                output = run_command(['journalctl', '-u', service, '--no-pager']).decode()
                 if output.strip() and "No entries" not in output:
                     break
             except:
