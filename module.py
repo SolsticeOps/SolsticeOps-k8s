@@ -22,7 +22,7 @@ def get_kubeconfig():
         '/root/.kube/config'
     ]
     for p in paths:
-        if os.path.exists(p) and os.access(p, os.R_OK):
+        if os.path.exists(p) and os.access(p, os.R_OK) and os.path.getsize(p) > 0:
             return p
     
     # If no directly readable file found, we can't load it in Python easily
@@ -152,7 +152,15 @@ class Module(BaseModule):
                 # Get current context
                 try:
                     contexts, active_context = config.list_kube_config_contexts(config_file=kconfig)
-                    context['k8s_context'] = active_context['name'] if active_context else 'N/A'
+                    if active_context:
+                        context['k8s_context'] = active_context['name']
+                    else:
+                        # Fallback to kubectl if python client fails to find active context
+                        env = os.environ.copy()
+                        env['KUBECONFIG'] = kconfig
+                        cmd = ['kubectl', 'config', 'current-context']
+                        out = run_sudo_command(cmd, capture_output=True, env=env, log_errors=False)
+                        context['k8s_context'] = out.decode().strip() if out else 'N/A'
                 except Exception as e:
                     context['k8s_context'] = f'Error: {str(e)}'
 
