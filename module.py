@@ -15,6 +15,7 @@ except ImportError:
 def get_kubeconfig():
     """Returns the path to the kubeconfig file if it exists and is accessible."""
     paths = [
+        '/etc/kubernetes/admin.conf',
         '/etc/rancher/k3s/k3s.yaml',
         '/var/snap/microk8s/current/credentials/client.config',
         os.path.expanduser('~/.kube/config'),
@@ -215,9 +216,12 @@ class Module(BaseModule):
                 ("Setting up Kubernetes GPG key...", "bash -c 'curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes'"),
                 ("Adding Kubernetes repository...", "bash -c 'echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /\" | tee /etc/apt/sources.list.d/kubernetes.list'"),
                 ("Updating package index...", "apt-get update"),
-                ("Installing kubectl...", "apt-get install -y kubectl"),
-                ("Installing k3s (Lightweight Kubernetes)...", "bash -c 'curl -sfL https://get.k3s.io | sh -'"),
-                ("Waiting for cluster to be ready...", "bash -c 'until [ -f /etc/rancher/k3s/k3s.yaml ]; do sleep 2; done && chmod 644 /etc/rancher/k3s/k3s.yaml'"),
+                ("Installing K8s components (kubeadm, kubelet, kubectl)...", "apt-get install -y kubelet kubeadm kubectl && apt-mark hold kubelet kubeadm kubectl"),
+                ("Disabling SWAP (Required for K8s)...", "swapoff -a && sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab"),
+                ("Initializing Kubernetes cluster...", "bash -c 'kubeadm init --pod-network-cidr=10.244.0.0/16 || true'"),
+                ("Setting up kubeconfig...", "bash -c 'mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config'"),
+                ("Installing Network Plugin (Flannel)...", "bash -c 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml'"),
+                ("Allowing pods on control-plane...", "bash -c 'KUBECONFIG=/etc/kubernetes/admin.conf kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true'"),
             ]
             try:
                 for stage_name, command in stages:
