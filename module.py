@@ -216,6 +216,8 @@ class Module(BaseModule):
                 ("Adding Kubernetes repository...", "bash -c 'echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /\" | tee /etc/apt/sources.list.d/kubernetes.list'"),
                 ("Updating package index...", "apt-get update"),
                 ("Installing kubectl...", "apt-get install -y kubectl"),
+                ("Installing k3s (Lightweight Kubernetes)...", "bash -c 'curl -sfL https://get.k3s.io | sh -'"),
+                ("Waiting for cluster to be ready...", "bash -c 'until [ -f /etc/rancher/k3s/k3s.yaml ]; do sleep 2; done && chmod 644 /etc/rancher/k3s/k3s.yaml'"),
             ]
             try:
                 for stage_name, command in stages:
