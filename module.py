@@ -35,9 +35,7 @@ class K8sSession(TerminalSession):
         self.namespace = namespace
         self.pod_name = pod_name
         kconfig = get_kubeconfig()
-        if kconfig:
-            os.environ['KUBECONFIG'] = kconfig
-        config.load_kube_config()
+        config.load_kube_config(config_file=kconfig)
         self.api = client.CoreV1Api()
         self._setup_session()
 
