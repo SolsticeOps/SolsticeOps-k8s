@@ -5,18 +5,27 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from core.utils import run_sudo_command
+from .module import get_kubeconfig
 try:
     from kubernetes import client as k8s_client, config as k8s_config
     K8S_AVAILABLE = True
 except ImportError:
     K8S_AVAILABLE = False
 
+def setup_k8s_client():
+    if not K8S_AVAILABLE: return False
+    try:
+        kconfig = get_kubeconfig()
+        k8s_config.load_kube_config(config_file=kconfig)
+        return True
+    except:
+        return False
+
 @login_required
 def k8s_pod_logs(request, namespace, pod_name):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return HttpResponse("K8s not available", status=500)
     try:
-        k8s_config.load_kube_config()
         v1 = k8s_client.CoreV1Api()
         logs = v1.read_namespaced_pod_log(name=pod_name, namespace=namespace, tail_lines=200)
         return HttpResponse(logs, content_type='text/plain')
@@ -25,10 +34,9 @@ def k8s_pod_logs(request, namespace, pod_name):
 
 @login_required
 def k8s_pod_logs_download(request, namespace, pod_name):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return HttpResponse("K8s not available", status=500)
     try:
-        k8s_config.load_kube_config()
         v1 = k8s_client.CoreV1Api()
         logs = v1.read_namespaced_pod_log(name=pod_name, namespace=namespace)
         response = HttpResponse(logs, content_type='text/plain')
@@ -39,10 +47,9 @@ def k8s_pod_logs_download(request, namespace, pod_name):
 
 @login_required
 def k8s_pod_action(request, namespace, pod_name, action):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return redirect('tool_detail', tool_name='k8s')
     try:
-        k8s_config.load_kube_config()
         v1 = k8s_client.CoreV1Api()
         if action == 'delete':
             v1.delete_namespaced_pod(name=pod_name, namespace=namespace)
@@ -53,10 +60,9 @@ def k8s_pod_action(request, namespace, pod_name, action):
 
 @login_required
 def k8s_deployment_scale(request, namespace, name, replicas):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return HttpResponse("K8s not available", status=500)
     try:
-        k8s_config.load_kube_config()
         apps_v1 = k8s_client.AppsV1Api()
         body = {'spec': {'replicas': int(replicas)}}
         apps_v1.patch_namespaced_deployment_scale(name=name, namespace=namespace, body=body)
@@ -66,10 +72,9 @@ def k8s_deployment_scale(request, namespace, name, replicas):
 
 @login_required
 def k8s_deployment_restart(request, namespace, name):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return HttpResponse("K8s not available", status=500)
     try:
-        k8s_config.load_kube_config()
         apps_v1 = k8s_client.AppsV1Api()
         from datetime import datetime
         now = datetime.now().isoformat()
@@ -91,25 +96,25 @@ def k8s_deployment_restart(request, namespace, name):
 
 @login_required
 def k8s_resource_describe(request, resource_type, namespace, name):
-    if not K8S_AVAILABLE:
-        return HttpResponse("K8s not available", status=500)
     try:
+        kconfig = get_kubeconfig()
+        env = os.environ.copy()
+        if kconfig:
+            env['KUBECONFIG'] = kconfig
+
         cmd = ['kubectl', 'describe', resource_type, name]
         if namespace:
             cmd.extend(['-n', namespace])
-        # Kubectl might need sudo if kubeconfig is restricted, but usually it doesn't.
-        # However, for consistency we use run_sudo_command which will fallback to non-sudo if password not set.
-        output = run_sudo_command(cmd).decode()
+        
+        output = run_sudo_command(cmd, env=env).decode()
         return HttpResponse(output)
     except Exception as e:
         return HttpResponse(str(e), status=500)
 
 @login_required
 def k8s_resource_yaml(request, resource_type, namespace, name):
-    if not K8S_AVAILABLE:
+    if not setup_k8s_client():
         return HttpResponse("K8s not available", status=500)
-    
-    k8s_config.load_kube_config()
     
     api_map = {
         'pod': k8s_client.CoreV1Api().read_namespaced_pod,
@@ -157,19 +162,14 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
         if request.method == 'POST':
             new_yaml_str = request.POST.get('yaml')
             try:
-                process = subprocess.Popen(
-                    ['kubectl', 'apply', '-f', '-'],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                stdout, stderr = process.communicate(input=new_yaml_str)
-                
-                if process.returncode == 0:
-                    return HttpResponse("Resource updated successfully.", status=200)
-                else:
-                    return HttpResponse(f"Update failed: {stderr}", status=400)
+                kconfig = get_kubeconfig()
+                env = os.environ.copy()
+                if kconfig:
+                    env['KUBECONFIG'] = kconfig
+
+                # Use run_sudo_command for apply
+                run_sudo_command(['kubectl', 'apply', '-f', '-'], input_data=new_yaml_str, env=env)
+                return HttpResponse("Resource updated successfully.", status=200)
             except Exception as e:
                 return HttpResponse(f"Update failed: {str(e)}", status=500)
             
@@ -184,6 +184,11 @@ def k8s_terminal_run(request):
         namespace = request.POST.get('namespace')
         pod = request.POST.get('pod')
 
+        kconfig = get_kubeconfig()
+        env = os.environ.copy()
+        if kconfig:
+            env['KUBECONFIG'] = kconfig
+
         if pod and namespace:
             full_command = f"kubectl exec -n {namespace} {pod} -- {command}"
             display_prompt = f"# {command}"
@@ -196,7 +201,7 @@ def k8s_terminal_run(request):
             display_prompt = f"$ {command}"
         
         try:
-            output = run_sudo_command(full_command, shell=True).decode()
+            output = run_sudo_command(full_command, shell=True, env=env).decode()
             return HttpResponse(f"{display_prompt}\n{output}")
         except subprocess.CalledProcessError as e:
             return HttpResponse(f"{display_prompt}\nError: {e.output.decode() if e.output else str(e)}")

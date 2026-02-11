@@ -1,5 +1,6 @@
 import subprocess
 import threading
+import os
 from django.shortcuts import render, redirect
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
@@ -11,11 +12,38 @@ try:
 except ImportError:
     K8S_AVAILABLE = False
 
+def get_kubeconfig():
+    """Returns the path to the kubeconfig file if it exists and is accessible."""
+    paths = [
+        '/etc/rancher/k3s/k3s.yaml',
+        '/var/snap/microk8s/current/credentials/client.config',
+        os.path.expanduser('~/.kube/config'),
+        '/root/.kube/config'
+    ]
+    for p in paths:
+        try:
+            # Use a shell command that doesn't produce error output if file is missing
+            cmd = f"bash -c '[ -f {p} ] && echo {p}'"
+            # We use run_sudo_command with shell=True. 
+            # To avoid the logger.error in core/utils.py, we need the command to return 0.
+            # But wait, run_sudo_command with shell=True wraps it: echo 'pass' | sudo -S cmd
+            # If cmd is '[ -f /none ] && echo exists', it returns 1.
+            # So we do: '[ -f /none ] && echo exists || true'
+            check = run_sudo_command(f"[ -f {p} ] && echo {p} || true", shell=True, capture_output=True).decode().strip()
+            if check == p:
+                return p
+        except:
+            continue
+    return None
+
 class K8sSession(TerminalSession):
     def __init__(self, namespace, pod_name):
         super().__init__()
         self.namespace = namespace
         self.pod_name = pod_name
+        kconfig = get_kubeconfig()
+        if kconfig:
+            os.environ['KUBECONFIG'] = kconfig
         config.load_kube_config()
         self.api = client.CoreV1Api()
         self._setup_session()
@@ -56,24 +84,32 @@ class Module(BaseModule):
 
     def get_service_version(self):
         try:
+            kconfig = get_kubeconfig()
+            env = os.environ.copy()
+            if kconfig:
+                env['KUBECONFIG'] = kconfig
+
             # Try to get server version via API
             if K8S_AVAILABLE:
                 try:
-                    config.load_kube_config()
+                    config.load_kube_config(config_file=kconfig)
                     version_info = client.VersionApi().get_code()
                     return version_info.git_version
                 except:
                     pass
 
-            process = subprocess.run(["kubectl", "version", "--client", "--short"], capture_output=True, text=True)
-            if process.returncode == 0:
+            cmd = ['kubectl', 'version', '--client', '--short']
+            process = run_sudo_command(cmd, capture_output=True, env=env)
+            if process:
                 # Output is like "Client Version: v1.28.2"
-                return process.stdout.strip().split(":")[-1].strip()
+                return process.decode().strip().split(":")[-1].strip()
+            
             # Try without --short for newer kubectl
-            process = subprocess.run(["kubectl", "version", "--client"], capture_output=True, text=True)
-            if process.returncode == 0:
+            cmd = ['kubectl', 'version', '--client']
+            process = run_sudo_command(cmd, capture_output=True, env=env)
+            if process:
                 import re
-                match = re.search(r'GitVersion:"(v[^"]+)"', process.stdout)
+                match = re.search(r'GitVersion:"(v[^"]+)"', process.decode())
                 if match:
                     return match.group(1)
         except Exception:
@@ -107,7 +143,8 @@ class Module(BaseModule):
         context = {}
         if tool.status == 'installed' and K8S_AVAILABLE:
             try:
-                config.load_kube_config()
+                kconfig = get_kubeconfig()
+                config.load_kube_config(config_file=kconfig)
                 
                 # Get current context
                 try:
