@@ -30,7 +30,7 @@ def get_kubeconfig():
             # But wait, run_sudo_command with shell=True wraps it: echo 'pass' | sudo -S cmd
             # If cmd is '[ -f /none ] && echo exists', it returns 1.
             # So we do: '[ -f /none ] && echo exists || true'
-            check = run_sudo_command(f"[ -f {p} ] && echo {p} || true", shell=True, capture_output=True).decode().strip()
+            check = run_sudo_command(f"[ -f {p} ] && echo {p} || true", shell=True, capture_output=True, log_errors=False).decode().strip()
             if check == p:
                 return p
         except:
@@ -100,7 +100,7 @@ class Module(BaseModule):
                     pass
 
             cmd = ['kubectl', 'version', '--client']
-            process = run_sudo_command(cmd, capture_output=True, env=env)
+            process = run_sudo_command(cmd, capture_output=True, env=env, log_errors=False)
             if process:
                 import re
                 output = process.decode()
