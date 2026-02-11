@@ -163,7 +163,7 @@ class Module(BaseModule):
         return None
 
     def install(self, request, tool):
-        if tool.status != 'not_installed':
+        if tool.status not in ['not_installed', 'error']:
             return
 
         tool.status = 'installing'
@@ -173,8 +173,8 @@ class Module(BaseModule):
             stages = [
                 ("Updating apt repositories...", "apt-get update"),
                 ("Installing dependencies...", "apt-get install -y ca-certificates curl gnupg"),
-                ("Setting up Kubernetes GPG key...", "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes"),
-                ("Adding Kubernetes repository...", "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list"),
+                ("Setting up Kubernetes GPG key...", "bash -c 'curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes'"),
+                ("Adding Kubernetes repository...", "bash -c 'echo \"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /\" | tee /etc/apt/sources.list.d/kubernetes.list'"),
                 ("Updating package index...", "apt-get update"),
                 ("Installing kubectl...", "apt-get install -y kubectl"),
             ]
