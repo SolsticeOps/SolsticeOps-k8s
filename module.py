@@ -117,10 +117,16 @@ class Module(BaseModule):
     def get_service_status(self, tool):
         try:
             # Check if kubelet is active
-            status_process = run_command(["systemctl", "is-active", "kubelet"])
-            return 'running' if status_process.decode().strip() == "active" else 'stopped'
-        except Exception:
+            # Use log_errors=False to avoid cluttering logs when service is just stopped
+            status_process = run_command(["systemctl", "is-active", "kubelet"], log_errors=False)
+            status = status_process.decode().strip()
+            if status == "active":
+                return 'running'
+            elif status in ["inactive", "failed", "deactivating"]:
+                return 'stopped'
             return 'error'
+        except Exception:
+            return 'stopped' # Default to stopped if systemctl fails or service not found
 
     def service_start(self, tool):
         run_command(["systemctl", "start", "kubelet"])
