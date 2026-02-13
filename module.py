@@ -133,7 +133,18 @@ class Module(BaseModule):
         ]
 
     def get_context_data(self, request, tool):
-        context = {}
+        context = {
+            'k8s_pods': [],
+            'k8s_deployments': [],
+            'k8s_services': [],
+            'k8s_configmaps': [],
+            'k8s_secrets': [],
+            'k8s_events': [],
+            'k8s_nodes': [],
+            'k8s_namespaces': [],
+            'k8s_context': 'N/A',
+            'k8s_available': False
+        }
         if tool.status == 'installed':
             if not K8S_AVAILABLE:
                 context['k8s_error'] = "The 'kubernetes' Python library is not installed. Please install it to manage Kubernetes clusters."
@@ -198,14 +209,6 @@ class Module(BaseModule):
                 logger.error(f"K8s context error: {e}")
                 context['k8s_error'] = str(e)
                 context['k8s_available'] = False
-                context['k8s_pods'] = []
-                context['k8s_deployments'] = []
-                context['k8s_services'] = []
-                context['k8s_configmaps'] = []
-                context['k8s_secrets'] = []
-                context['k8s_events'] = []
-                context['k8s_nodes'] = []
-                context['k8s_namespaces'] = []
         return context
 
     def handle_hx_request(self, request, tool, target):
