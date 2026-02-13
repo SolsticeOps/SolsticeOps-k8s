@@ -137,6 +137,8 @@ class Module(BaseModule):
         ]
 
     def get_context_data(self, request, tool):
+        from django.core.cache import cache
+        
         context = {
             'k8s_pods': [],
             'k8s_deployments': [],
@@ -149,70 +151,86 @@ class Module(BaseModule):
             'k8s_context': 'N/A',
             'k8s_available': False
         }
-        if tool.status == 'installed':
-            if not K8S_AVAILABLE:
-                context['k8s_error'] = "The 'kubernetes' Python library is not installed. Please install it to manage Kubernetes clusters."
-                return context
+        
+        if tool.status != 'installed':
+            return context
+
+        if not K8S_AVAILABLE:
+            context['k8s_error'] = "The 'kubernetes' Python library is not installed."
+            return context
+
+        # Check if we recently had a connection error to avoid repeated timeouts
+        cache_key = f'k8s_connectivity_error_{tool.id}'
+        last_error = cache.get(cache_key)
+        if last_error:
+            context['k8s_error'] = f"Cluster unreachable (cached): {last_error}"
+            return context
             
+        try:
+            kconfig = get_kubeconfig()
+            if not kconfig:
+                context['k8s_error'] = "No readable kubeconfig found."
+                return context
+
+            # Set a shorter timeout for the kubernetes client
+            conf = client.Configuration()
+            config.load_kube_config(config_file=kconfig, client_configuration=conf)
+            conf.connection_pool_maxsize = 4
+            conf.retries = 0 # Don't retry to save time on failures
+            conf.connect_timeout = 2
+            conf.read_timeout = 4
+            
+            api_client = client.ApiClient(conf)
+            v1 = client.CoreV1Api(api_client)
+            
+            # 1. Quick connectivity check - list namespaces
             try:
-                kconfig = get_kubeconfig()
-                if not kconfig:
-                    context['k8s_error'] = "No readable kubeconfig found. Ensure Kubernetes is installed and the config file is readable."
-                    return context
-
-                # Set a shorter timeout for the kubernetes client
-                conf = client.Configuration()
-                config.load_kube_config(config_file=kconfig, client_configuration=conf)
-                conf.connection_pool_maxsize = 4
-                conf.retries = 1
-                # Timeout in seconds
-                conf.connect_timeout = 2
-                conf.read_timeout = 5
-                
-                api_client = client.ApiClient(conf)
-                
-                # Get current context
-                try:
-                    contexts, active_context = config.list_kube_config_contexts(config_file=kconfig)
-                    if active_context:
-                        context['k8s_context'] = active_context['name']
-                    else:
-                        # Fallback to kubectl if python client fails to find active context
-                        env = os.environ.copy()
-                        env['KUBECONFIG'] = kconfig
-                        cmd = ['kubectl', 'config', 'current-context']
-                        out = run_command(cmd, capture_output=True, env=env, log_errors=False)
-                        context['k8s_context'] = out.decode().strip() if out else 'N/A'
-                except Exception as e:
-                    context['k8s_context'] = f'Error: {str(e)}'
-
-                v1 = client.CoreV1Api(api_client)
-                apps_v1 = client.AppsV1Api(api_client)
-                namespace = request.GET.get('namespace')
-                
-                if namespace:
-                    context['k8s_pods'] = v1.list_namespaced_pod(namespace, _request_timeout=(2, 5)).items
-                    context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace, _request_timeout=(2, 5)).items
-                    context['k8s_services'] = v1.list_namespaced_service(namespace, _request_timeout=(2, 5)).items
-                    context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace, _request_timeout=(2, 5)).items
-                    context['k8s_secrets'] = v1.list_namespaced_secret(namespace, _request_timeout=(2, 5)).items
-                    context['k8s_events'] = v1.list_namespaced_event(namespace, _request_timeout=(2, 5)).items
-                    context['current_namespace'] = namespace
-                else:
-                    context['k8s_pods'] = v1.list_pod_for_all_namespaces(_request_timeout=(2, 5)).items
-                    context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces(_request_timeout=(2, 5)).items
-                    context['k8s_services'] = v1.list_service_for_all_namespaces(_request_timeout=(2, 5)).items
-                    context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces(_request_timeout=(2, 5)).items
-                    context['k8s_secrets'] = v1.list_secret_for_all_namespaces(_request_timeout=(2, 5)).items
-                    context['k8s_events'] = v1.list_event_for_all_namespaces(_request_timeout=(2, 5)).items
-                
-                context['k8s_nodes'] = v1.list_node(_request_timeout=(2, 5)).items
-                context['k8s_namespaces'] = v1.list_namespace(_request_timeout=(2, 5)).items
-                context['k8s_available'] = True
+                context['k8s_namespaces'] = v1.list_namespace(_request_timeout=2).items
             except Exception as e:
-                logger.error(f"K8s context error: {e}")
-                context['k8s_error'] = str(e)
-                context['k8s_available'] = False
+                error_msg = str(e)
+                logger.error(f"K8s connectivity check failed: {error_msg}")
+                context['k8s_error'] = error_msg
+                # Cache the error for 60 seconds to prevent UI hangs
+                cache.set(cache_key, error_msg, 60)
+                return context
+
+            # If we reached here, the cluster is likely up
+            apps_v1 = client.AppsV1Api(api_client)
+            namespace = request.GET.get('namespace')
+            
+            # Get current context name
+            try:
+                contexts, active_context = config.list_kube_config_contexts(config_file=kconfig)
+                context['k8s_context'] = active_context['name'] if active_context else 'N/A'
+            except:
+                pass
+
+            timeout = (2, 4)
+            if namespace:
+                context['k8s_pods'] = v1.list_namespaced_pod(namespace, _request_timeout=timeout).items
+                context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace, _request_timeout=timeout).items
+                context['k8s_services'] = v1.list_namespaced_service(namespace, _request_timeout=timeout).items
+                context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace, _request_timeout=timeout).items
+                context['k8s_secrets'] = v1.list_namespaced_secret(namespace, _request_timeout=timeout).items
+                context['k8s_events'] = v1.list_namespaced_event(namespace, _request_timeout=timeout).items
+                context['current_namespace'] = namespace
+            else:
+                context['k8s_pods'] = v1.list_pod_for_all_namespaces(_request_timeout=timeout).items
+                context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces(_request_timeout=timeout).items
+                context['k8s_services'] = v1.list_service_for_all_namespaces(_request_timeout=timeout).items
+                context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces(_request_timeout=timeout).items
+                context['k8s_secrets'] = v1.list_secret_for_all_namespaces(_request_timeout=timeout).items
+                context['k8s_events'] = v1.list_event_for_all_namespaces(_request_timeout=timeout).items
+            
+            context['k8s_nodes'] = v1.list_node(_request_timeout=timeout).items
+            context['k8s_available'] = True
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"K8s general error: {error_msg}")
+            context['k8s_error'] = error_msg
+            cache.set(cache_key, error_msg, 30)
+            
         return context
 
     def handle_hx_request(self, request, tool, target):
