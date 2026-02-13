@@ -145,7 +145,16 @@ class Module(BaseModule):
                     context['k8s_error'] = "No readable kubeconfig found. Ensure Kubernetes is installed and the config file is readable."
                     return context
 
-                config.load_kube_config(config_file=kconfig)
+                # Set a shorter timeout for the kubernetes client
+                conf = client.Configuration()
+                config.load_kube_config(config_file=kconfig, client_configuration=conf)
+                conf.connection_pool_maxsize = 4
+                conf.retries = 1
+                # Timeout in seconds
+                conf.connect_timeout = 2
+                conf.read_timeout = 5
+                
+                api_client = client.ApiClient(conf)
                 
                 # Get current context
                 try:
@@ -162,31 +171,33 @@ class Module(BaseModule):
                 except Exception as e:
                     context['k8s_context'] = f'Error: {str(e)}'
 
-                v1 = client.CoreV1Api()
-                apps_v1 = client.AppsV1Api()
+                v1 = client.CoreV1Api(api_client)
+                apps_v1 = client.AppsV1Api(api_client)
                 namespace = request.GET.get('namespace')
                 
                 if namespace:
-                    context['k8s_pods'] = v1.list_namespaced_pod(namespace).items
-                    context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace).items
-                    context['k8s_services'] = v1.list_namespaced_service(namespace).items
-                    context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace).items
-                    context['k8s_secrets'] = v1.list_namespaced_secret(namespace).items
-                    context['k8s_events'] = v1.list_namespaced_event(namespace).items
+                    context['k8s_pods'] = v1.list_namespaced_pod(namespace, _request_timeout=(2, 5)).items
+                    context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace, _request_timeout=(2, 5)).items
+                    context['k8s_services'] = v1.list_namespaced_service(namespace, _request_timeout=(2, 5)).items
+                    context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace, _request_timeout=(2, 5)).items
+                    context['k8s_secrets'] = v1.list_namespaced_secret(namespace, _request_timeout=(2, 5)).items
+                    context['k8s_events'] = v1.list_namespaced_event(namespace, _request_timeout=(2, 5)).items
                     context['current_namespace'] = namespace
                 else:
-                    context['k8s_pods'] = v1.list_pod_for_all_namespaces().items
-                    context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces().items
-                    context['k8s_services'] = v1.list_service_for_all_namespaces().items
-                    context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces().items
-                    context['k8s_secrets'] = v1.list_secret_for_all_namespaces().items
-                    context['k8s_events'] = v1.list_event_for_all_namespaces().items
+                    context['k8s_pods'] = v1.list_pod_for_all_namespaces(_request_timeout=(2, 5)).items
+                    context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces(_request_timeout=(2, 5)).items
+                    context['k8s_services'] = v1.list_service_for_all_namespaces(_request_timeout=(2, 5)).items
+                    context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces(_request_timeout=(2, 5)).items
+                    context['k8s_secrets'] = v1.list_secret_for_all_namespaces(_request_timeout=(2, 5)).items
+                    context['k8s_events'] = v1.list_event_for_all_namespaces(_request_timeout=(2, 5)).items
                 
-                context['k8s_nodes'] = v1.list_node().items
-                context['k8s_namespaces'] = v1.list_namespace().items
+                context['k8s_nodes'] = v1.list_node(_request_timeout=(2, 5)).items
+                context['k8s_namespaces'] = v1.list_namespace(_request_timeout=(2, 5)).items
                 context['k8s_available'] = True
             except Exception as e:
+                logger.error(f"K8s context error: {e}")
                 context['k8s_error'] = str(e)
+                context['k8s_available'] = False
         return context
 
     def handle_hx_request(self, request, tool, target):
