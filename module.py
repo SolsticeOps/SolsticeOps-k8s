@@ -114,6 +114,23 @@ class Module(BaseModule):
             pass
         return None
 
+    def get_service_status(self, tool):
+        try:
+            # Check if kubelet is active
+            status_process = run_command(["systemctl", "is-active", "kubelet"])
+            return 'running' if status_process.decode().strip() == "active" else 'stopped'
+        except Exception:
+            return 'error'
+
+    def service_start(self, tool):
+        run_command(["systemctl", "start", "kubelet"])
+
+    def service_stop(self, tool):
+        run_command(["systemctl", "stop", "kubelet"])
+
+    def service_restart(self, tool):
+        run_command(["systemctl", "restart", "kubelet"])
+
     def get_icon_class(self):
         return "kubernetes"
 
