@@ -161,9 +161,16 @@ class Module(BaseModule):
 
         # Check if we recently had a connection error to avoid repeated timeouts
         cache_key = f'k8s_connectivity_error_{tool.id}'
+        # Also check a global "probing" key to prevent multiple concurrent timeouts
+        probing_key = f'k8s_probing_{tool.id}'
+        
         last_error = cache.get(cache_key)
         if last_error:
             context['k8s_error'] = f"Cluster unreachable (cached): {last_error}"
+            return context
+        
+        if cache.get(probing_key):
+            context['k8s_error'] = "Cluster connectivity check in progress..."
             return context
             
         try:
@@ -171,6 +178,9 @@ class Module(BaseModule):
             if not kconfig:
                 context['k8s_error'] = "No readable kubeconfig found."
                 return context
+
+            # Set a probing flag for 10 seconds while we attempt to connect
+            cache.set(probing_key, True, 10)
 
             # Set a shorter timeout for the kubernetes client
             conf = client.Configuration()
@@ -186,12 +196,16 @@ class Module(BaseModule):
             # 1. Quick connectivity check - list namespaces
             try:
                 context['k8s_namespaces'] = v1.list_namespace(_request_timeout=2).items
+                # Clear probing flag on success
+                cache.delete(probing_key)
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"K8s connectivity check failed: {error_msg}")
                 context['k8s_error'] = error_msg
-                # Cache the error for 60 seconds to prevent UI hangs
-                cache.set(cache_key, error_msg, 60)
+                # Cache the error for 5 minutes (300s) if it's a "No route to host" or "Timeout"
+                # to prevent UI hangs. Users can manually refresh or wait.
+                cache.set(cache_key, error_msg, 300)
+                cache.delete(probing_key)
                 return context
 
             # If we reached here, the cluster is likely up
