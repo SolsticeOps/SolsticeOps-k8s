@@ -198,6 +198,14 @@ class Module(BaseModule):
                 logger.error(f"K8s context error: {e}")
                 context['k8s_error'] = str(e)
                 context['k8s_available'] = False
+                context['k8s_pods'] = []
+                context['k8s_deployments'] = []
+                context['k8s_services'] = []
+                context['k8s_configmaps'] = []
+                context['k8s_secrets'] = []
+                context['k8s_events'] = []
+                context['k8s_nodes'] = []
+                context['k8s_namespaces'] = []
         return context
 
     def handle_hx_request(self, request, tool, target):
