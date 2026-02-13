@@ -1,11 +1,15 @@
 import subprocess
 import threading
 import os
+import logging
 from django.shortcuts import render, redirect
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
 from core.utils import run_command
+
+logger = logging.getLogger(__name__)
+
 try:
     from kubernetes import client, config, stream
     K8S_AVAILABLE = True
