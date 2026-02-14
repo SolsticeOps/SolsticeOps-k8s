@@ -226,7 +226,7 @@ def k8s_service_logs(request):
                 output = run_command(['journalctl', '-u', service, '-n', '200', '--no-pager']).decode()
                 if output.strip() and "No entries" not in output:
                     break
-            except:
+            except subprocess.CalledProcessError:
                 continue
         
         if not output.strip() or "No entries" in output:
@@ -247,7 +247,7 @@ def k8s_service_logs_download(request):
                 output = run_command(['journalctl', '-u', service, '--no-pager']).decode()
                 if output.strip() and "No entries" not in output:
                     break
-            except:
+            except subprocess.CalledProcessError:
                 continue
         
         response = HttpResponse(output, content_type='text/plain')
