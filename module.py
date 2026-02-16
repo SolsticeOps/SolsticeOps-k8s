@@ -62,7 +62,13 @@ class Module(BaseModule):
         return "Kubernetes"
 
     description = "Manage Kubernetes clusters, pods, deployments and services."
-    version = "1.0.0"
+    
+    @property
+    def version(self):
+        try:
+            return subprocess.check_output(['git', '-C', os.path.dirname(__file__), 'describe', '--tags', '--abbrev=0']).decode().strip()
+        except:
+            return "1.0.0"
 
     def get_service_version(self):
         try:
