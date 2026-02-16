@@ -4,6 +4,26 @@
 </div>
 {% endif %}
 
+{% if k8s_ip_mismatch %}
+<div class="alert alert-warning py-3 mb-3">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+        <div>
+            <h6 class="alert-heading fw-bold mb-1">Server IP Mismatch Detected</h6>
+            <p class="mb-2 small">Kubernetes is configured for IP <code>{{ k8s_ip_mismatch.config_ip }}</code>, but the current server IP is <code>{{ k8s_ip_mismatch.current_ip }}</code>. This usually happens after a server restart or network change, and will prevent connection to the cluster.</p>
+            <button class="btn btn-sm btn-warning fw-bold" 
+                    hx-post="{% url 'k8s_repair_ip' %}" 
+                    hx-confirm="Are you sure you want to attempt to update the Kubernetes IP configuration? This will restart the API server and other components."
+                    hx-target="#k8s-repair-status"
+                    hx-swap="innerHTML">
+                <i class="bi bi-tools me-1"></i> Repair Configuration
+            </button>
+            <div id="k8s-repair-status" class="mt-2 small fw-bold"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div class="small">
         <span class="text-muted">Context:</span> <span class="badge bg-light text-dark border">{{ k8s_context }}</span>

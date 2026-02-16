@@ -2,12 +2,14 @@ import subprocess
 import threading
 import os
 import logging
+import yaml
+import re
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
-from core.utils import run_command
+from core.utils import run_command, get_primary_ip
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +209,24 @@ class Module(BaseModule):
             # Set a probing flag for 10 seconds while we attempt to connect
             cache.set(probing_key, True, 10)
 
+            # Check for IP mismatch before attempting connection
+            try:
+                with open(kconfig, 'r') as f:
+                    cfg = yaml.safe_load(f)
+                    server_url = cfg['clusters'][0]['cluster']['server']
+                    match = re.search(r'https://([^:]+):', server_url)
+                    if match:
+                        config_ip = match.group(1)
+                        current_ip = get_primary_ip()
+                        # Only flag if it's not localhost/127.0.0.1
+                        if config_ip != current_ip and config_ip not in ['127.0.0.1', 'localhost']:
+                            context['k8s_ip_mismatch'] = {
+                                'config_ip': config_ip,
+                                'current_ip': current_ip
+                            }
+            except Exception as e:
+                logger.debug(f"Failed to check IP mismatch: {e}")
+
             # Set a shorter timeout for the kubernetes client
             conf = client.Configuration()
             config.load_kube_config(config_file=kconfig, client_configuration=conf)
@@ -302,6 +322,7 @@ class Module(BaseModule):
         tool.save()
 
         def run_install():
+            primary_ip = get_primary_ip()
             stages = [
                 ("Updating apt repositories...", "apt-get update"),
                 ("Installing dependencies...", "apt-get install -y ca-certificates curl gnupg"),
@@ -315,7 +336,7 @@ class Module(BaseModule):
                 ("Configuring firewalld ports...", "if systemctl is-active --quiet firewalld; then firewall-cmd --permanent --add-port=6443/tcp && firewall-cmd --permanent --add-port=10250/tcp && firewall-cmd --reload; fi"),
                 ("Configuring containerd (CRI)...", "mkdir -p /etc/containerd && containerd config default | tee /etc/containerd/config.toml > /dev/null && sed -i \"s/SystemdCgroup = false/SystemdCgroup = true/g\" /etc/containerd/config.toml && systemctl restart containerd"),
                 ("Pulling Kubernetes images...", "kubeadm config images pull"),
-                ("Initializing Kubernetes cluster...", "kubeadm init --pod-network-cidr=10.244.0.0/16 || true"),
+                ("Initializing Kubernetes cluster...", f"kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address={primary_ip} || true"),
                 ("Setting up kubeconfig...", "mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config"),
                 ("Installing Network Plugin (Flannel)...", "kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"),
                 ("Allowing pods on control-plane...", "kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true"),
@@ -351,6 +372,7 @@ class Module(BaseModule):
             path('k8s/pod/<str:namespace>/<str:pod_name>/shell/', views.k8s_pod_shell, name='k8s_pod_shell'),
             path('k8s/deployment/<str:namespace>/<str:name>/scale/<int:replicas>/', views.k8s_deployment_scale, name='k8s_deployment_scale'),
             path('k8s/deployment/<str:namespace>/<str:name>/restart/', views.k8s_deployment_restart, name='k8s_deployment_restart'),
+            path('k8s/resource/repair-ip/', views.k8s_repair_ip, name='k8s_repair_ip'),
             path('k8s/resource/describe/<str:resource_type>/<str:name>/', views.k8s_resource_describe, {'namespace': ''}, name='k8s_resource_describe_cluster'),
             path('k8s/resource/describe/<str:resource_type>/<str:namespace>/<str:name>/', views.k8s_resource_describe, name='k8s_resource_describe'),
         ]

@@ -4,7 +4,7 @@ import yaml
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
-from core.utils import run_command
+from core.utils import run_command, get_primary_ip
 from .module import get_kubeconfig
 try:
     from kubernetes import client as k8s_client, config as k8s_config
@@ -255,3 +255,67 @@ def k8s_service_logs_download(request):
         return response
     except Exception as e:
         return HttpResponse(f"Error downloading system logs: {str(e)}", status=500)
+
+@login_required
+def k8s_repair_ip(request):
+    """
+    Attempts to repair Kubernetes configuration after a server IP change.
+    This is a complex operation and might not work for all setups.
+    """
+    if request.method != 'POST':
+        return HttpResponse("Method not allowed", status=405)
+    
+    try:
+        new_ip = get_primary_ip()
+        
+        # 1. Update API server manifest
+        apiserver_manifest = '/etc/kubernetes/manifests/kube-apiserver.yaml'
+        if os.path.exists(apiserver_manifest):
+            run_command(['sed', '-i', f's/--advertise-address=[0-9.]*/--advertise-address={new_ip}/', apiserver_manifest])
+        
+        # 2. Update etcd manifest if it exists and uses the old IP
+        etcd_manifest = '/etc/kubernetes/manifests/etcd.yaml'
+        if os.path.exists(etcd_manifest):
+            # This is trickier as etcd uses multiple IPs for peer-urls etc.
+            # But we can try to replace the listen-client-urls and advertise-client-urls
+            run_command(['sed', '-i', f's/--advertise-client-urls=https:\\/\\/[0-9.]*/--advertise-client-urls=https:\\/\\/{new_ip}/', etcd_manifest])
+            run_command(['sed', '-i', f's/--listen-client-urls=https:\\/\\/127.0.0.1:2379,https:\\/\\/[0-9.]*/--listen-client-urls=https:\\/\\/127.0.0.1:2379,https:\\/\\/{new_ip}/', etcd_manifest])
+
+        # 3. Regenerate API server certificates
+        # We need to remove the old ones first
+        cert_dir = '/etc/kubernetes/pki'
+        if os.path.exists(cert_dir):
+            for f in ['apiserver.crt', 'apiserver.key']:
+                p = os.path.join(cert_dir, f)
+                if os.path.exists(p):
+                    os.remove(p)
+            
+            run_command(['kubeadm', 'init', 'phase', 'certs', 'apiserver', f'--apiserver-advertise-address={new_ip}'])
+
+        # 4. Regenerate kubeconfig
+        run_command(['kubeadm', 'init', 'phase', 'kubeconfig', 'admin', f'--apiserver-advertise-address={new_ip}'])
+        
+        # 5. Copy new config to root and current user if possible
+        admin_conf = '/etc/kubernetes/admin.conf'
+        if os.path.exists(admin_conf):
+            dest = '/root/.kube/config'
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            import shutil
+            shutil.copy2(admin_conf, dest)
+            os.chmod(dest, 0o644)
+
+        # 6. Restart kubelet
+        run_command(['systemctl', 'restart', 'kubelet'])
+        
+        # Clear connectivity error cache
+        from django.core.cache import cache
+        from core.models import Tool
+        try:
+            tool = Tool.objects.get(name='k8s')
+            cache.delete(f'k8s_connectivity_error_{tool.id}')
+        except:
+            pass
+        
+        return HttpResponse("Kubernetes configuration updated. Please wait a minute for components to restart.")
+    except Exception as e:
+        return HttpResponse(f"Repair failed: {str(e)}", status=500)
