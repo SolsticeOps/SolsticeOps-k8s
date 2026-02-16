@@ -10,6 +10,7 @@ from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
 from core.utils import run_command, get_primary_ip
+from core.k8s_cli_wrapper import K8sCLI, get_kubeconfig
 
 logger = logging.getLogger(__name__)
 
@@ -18,23 +19,6 @@ try:
     K8S_AVAILABLE = True
 except ImportError:
     K8S_AVAILABLE = False
-
-def get_kubeconfig():
-    """Returns the path to the kubeconfig file if it exists and is accessible by the current process."""
-    paths = [
-        '/etc/kubernetes/admin.conf',
-        '/etc/rancher/k3s/k3s.yaml',
-        '/var/snap/microk8s/current/credentials/client.config',
-        os.path.expanduser('~/.kube/config'),
-        '/root/.kube/config'
-    ]
-    for p in paths:
-        if os.path.exists(p) and os.access(p, os.R_OK) and os.path.getsize(p) > 0:
-            return p
-    
-    # If no directly readable file found, we can't load it in Python easily
-    # unless we copy it to a readable location.
-    return None
 
 class K8sSession(TerminalSession):
     def __init__(self, namespace, pod_name):
@@ -82,36 +66,28 @@ class Module(BaseModule):
 
     def get_service_version(self):
         try:
+            k8s = K8sCLI()
+            info = k8s.info()
+            if info:
+                return info.get('serverVersion', {}).get('gitVersion') or info.get('clientVersion', {}).get('gitVersion')
+            
+            # Fallback to manual check if K8sCLI info fails
             kconfig = get_kubeconfig()
             env = os.environ.copy()
             if kconfig:
                 env['KUBECONFIG'] = kconfig
-
-            # Try to get server version via API
-            if K8S_AVAILABLE:
-                try:
-                    config.load_kube_config(config_file=kconfig)
-                    version_info = client.VersionApi().get_code()
-                    return version_info.git_version
-                except:
-                    pass
 
             cmd = ['kubectl', 'version', '--client']
             process = run_command(cmd, capture_output=True, env=env, log_errors=False)
             if process:
                 import re
                 output = process.decode()
-                # Try to find version in newer format (GitVersion:"v1.29.1") or older format (Client Version: v1.28.2)
                 match = re.search(r'GitVersion:"(v[^"]+)"', output)
                 if match:
                     return match.group(1)
                 match = re.search(r'Client Version:\s+(v[0-9.]+)', output)
                 if match:
                     return match.group(1)
-                # Fallback: just return the first line if it looks like a version
-                first_line = output.splitlines()[0]
-                if 'Version' in first_line:
-                    return first_line.strip()
         except Exception:
             pass
         return None
@@ -181,13 +157,8 @@ class Module(BaseModule):
         if tool.status != 'installed':
             return context
 
-        if not K8S_AVAILABLE:
-            context['k8s_error'] = "The 'kubernetes' Python library is not installed."
-            return context
-
         # Check if we recently had a connection error to avoid repeated timeouts
         cache_key = f'k8s_connectivity_error_{tool.id}'
-        # Also check a global "probing" key to prevent multiple concurrent timeouts
         probing_key = f'k8s_probing_{tool.id}'
         
         last_error = cache.get(cache_key)
@@ -209,7 +180,7 @@ class Module(BaseModule):
             # Set a probing flag for 10 seconds while we attempt to connect
             cache.set(probing_key, True, 10)
 
-            # Check for IP mismatch before attempting connection
+            # Check for IP mismatch
             try:
                 with open(kconfig, 'r') as f:
                     cfg = yaml.safe_load(f)
@@ -218,7 +189,6 @@ class Module(BaseModule):
                     if match:
                         config_ip = match.group(1)
                         current_ip = get_primary_ip()
-                        # Only flag if it's not localhost/127.0.0.1
                         if config_ip != current_ip and config_ip not in ['127.0.0.1', 'localhost']:
                             context['k8s_ip_mismatch'] = {
                                 'config_ip': config_ip,
@@ -227,61 +197,35 @@ class Module(BaseModule):
             except Exception as e:
                 logger.debug(f"Failed to check IP mismatch: {e}")
 
-            # Set a shorter timeout for the kubernetes client
-            conf = client.Configuration()
-            config.load_kube_config(config_file=kconfig, client_configuration=conf)
-            conf.connection_pool_maxsize = 4
-            conf.retries = 0 # Don't retry to save time on failures
-            conf.connect_timeout = 2
-            conf.read_timeout = 4
+            k8s = K8sCLI()
             
-            api_client = client.ApiClient(conf)
-            v1 = client.CoreV1Api(api_client)
+            # Quick connectivity check
+            namespaces = k8s.get_namespaces()
+            if not namespaces:
+                # If namespaces list is empty, it might be an error or just empty (unlikely for a working cluster)
+                # But get_namespaces returns [] on error too.
+                # Let's try to get info to confirm
+                if not k8s.info():
+                    raise Exception("Failed to connect to Kubernetes cluster.")
             
-            # 1. Quick connectivity check - list namespaces
-            try:
-                context['k8s_namespaces'] = v1.list_namespace(_request_timeout=2).items
-                # Clear probing flag on success
-                cache.delete(probing_key)
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"K8s connectivity check failed: {error_msg}")
-                context['k8s_error'] = error_msg
-                # Cache the error for 5 minutes (300s) if it's a "No route to host" or "Timeout"
-                # to prevent UI hangs. Users can manually refresh or wait.
-                cache.set(cache_key, error_msg, 300)
-                cache.delete(probing_key)
-                return context
+            context['k8s_namespaces'] = namespaces
+            cache.delete(probing_key)
 
-            # If we reached here, the cluster is likely up
-            apps_v1 = client.AppsV1Api(api_client)
+            context['k8s_context'] = k8s.get_context()
             namespace = request.GET.get('namespace')
-            
-            # Get current context name
-            try:
-                contexts, active_context = config.list_kube_config_contexts(config_file=kconfig)
-                context['k8s_context'] = active_context['name'] if active_context else 'N/A'
-            except:
-                pass
+            all_namespaces = not bool(namespace)
 
-            timeout = (2, 4)
-            if namespace:
-                context['k8s_pods'] = v1.list_namespaced_pod(namespace, _request_timeout=timeout).items
-                context['k8s_deployments'] = apps_v1.list_namespaced_deployment(namespace, _request_timeout=timeout).items
-                context['k8s_services'] = v1.list_namespaced_service(namespace, _request_timeout=timeout).items
-                context['k8s_configmaps'] = v1.list_namespaced_config_map(namespace, _request_timeout=timeout).items
-                context['k8s_secrets'] = v1.list_namespaced_secret(namespace, _request_timeout=timeout).items
-                context['k8s_events'] = v1.list_namespaced_event(namespace, _request_timeout=timeout).items
-                context['current_namespace'] = namespace
-            else:
-                context['k8s_pods'] = v1.list_pod_for_all_namespaces(_request_timeout=timeout).items
-                context['k8s_deployments'] = apps_v1.list_deployment_for_all_namespaces(_request_timeout=timeout).items
-                context['k8s_services'] = v1.list_service_for_all_namespaces(_request_timeout=timeout).items
-                context['k8s_configmaps'] = v1.list_config_map_for_all_namespaces(_request_timeout=timeout).items
-                context['k8s_secrets'] = v1.list_secret_for_all_namespaces(_request_timeout=timeout).items
-                context['k8s_events'] = v1.list_event_for_all_namespaces(_request_timeout=timeout).items
+            context['k8s_pods'] = k8s.pods.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_deployments'] = k8s.deployments.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_services'] = k8s.services.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_configmaps'] = k8s.configmaps.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_secrets'] = k8s.secrets.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_events'] = k8s.events.list(namespace=namespace, all_namespaces=all_namespaces)
+            context['k8s_nodes'] = k8s.nodes.list()
             
-            context['k8s_nodes'] = v1.list_node(_request_timeout=timeout).items
+            if namespace:
+                context['current_namespace'] = namespace
+            
             context['k8s_available'] = True
             
         except Exception as e:
@@ -289,6 +233,7 @@ class Module(BaseModule):
             logger.error(f"K8s general error: {error_msg}")
             context['k8s_error'] = error_msg
             cache.set(cache_key, error_msg, 30)
+            cache.delete(probing_key)
             
         return context
 

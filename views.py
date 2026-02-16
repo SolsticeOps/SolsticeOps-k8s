@@ -5,40 +5,28 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from core.utils import run_command, get_primary_ip
-from .module import get_kubeconfig
-try:
-    from kubernetes import client as k8s_client, config as k8s_config
-    K8S_AVAILABLE = True
-except ImportError:
-    K8S_AVAILABLE = False
-
-def setup_k8s_client():
-    if not K8S_AVAILABLE: return False
-    try:
-        kconfig = get_kubeconfig()
-        k8s_config.load_kube_config(config_file=kconfig)
-        return True
-    except:
-        return False
+from core.k8s_cli_wrapper import K8sCLI, get_kubeconfig
 
 @login_required
 def k8s_pod_logs(request, namespace, pod_name):
-    if not setup_k8s_client():
-        return HttpResponse("K8s not available", status=500)
     try:
-        v1 = k8s_client.CoreV1Api()
-        logs = v1.read_namespaced_pod_log(name=pod_name, namespace=namespace, tail_lines=200)
+        k8s = K8sCLI()
+        pod = k8s.pods.get(name=pod_name, namespace=namespace)
+        if not pod:
+            return HttpResponse("Pod not found", status=404)
+        logs = pod.logs(tail=200)
         return HttpResponse(logs, content_type='text/plain')
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
 
 @login_required
 def k8s_pod_logs_download(request, namespace, pod_name):
-    if not setup_k8s_client():
-        return HttpResponse("K8s not available", status=500)
     try:
-        v1 = k8s_client.CoreV1Api()
-        logs = v1.read_namespaced_pod_log(name=pod_name, namespace=namespace)
+        k8s = K8sCLI()
+        pod = k8s.pods.get(name=pod_name, namespace=namespace)
+        if not pod:
+            return HttpResponse("Pod not found", status=404)
+        logs = pod.logs()
         response = HttpResponse(logs, content_type='text/plain')
         response['Content-Disposition'] = f'attachment; filename="pod_{pod_name}_logs.log"'
         return response
@@ -47,12 +35,10 @@ def k8s_pod_logs_download(request, namespace, pod_name):
 
 @login_required
 def k8s_pod_action(request, namespace, pod_name, action):
-    if not setup_k8s_client():
-        return redirect('tool_detail', tool_name='k8s')
     try:
-        v1 = k8s_client.CoreV1Api()
+        k8s = K8sCLI()
         if action == 'delete':
-            v1.delete_namespaced_pod(name=pod_name, namespace=namespace)
+            k8s.pods.delete(name=pod_name, namespace=namespace)
     except Exception as e:
         pass
     
@@ -60,36 +46,18 @@ def k8s_pod_action(request, namespace, pod_name, action):
 
 @login_required
 def k8s_deployment_scale(request, namespace, name, replicas):
-    if not setup_k8s_client():
-        return HttpResponse("K8s not available", status=500)
     try:
-        apps_v1 = k8s_client.AppsV1Api()
-        body = {'spec': {'replicas': int(replicas)}}
-        apps_v1.patch_namespaced_deployment_scale(name=name, namespace=namespace, body=body)
+        k8s = K8sCLI()
+        k8s.deployments.scale(name=name, namespace=namespace, replicas=replicas)
         return redirect('tool_detail', tool_name='k8s')
     except Exception as e:
         return HttpResponse(str(e), status=500)
 
 @login_required
 def k8s_deployment_restart(request, namespace, name):
-    if not setup_k8s_client():
-        return HttpResponse("K8s not available", status=500)
     try:
-        apps_v1 = k8s_client.AppsV1Api()
-        from datetime import datetime
-        now = datetime.now().isoformat()
-        body = {
-            'spec': {
-                'template': {
-                    'metadata': {
-                        'annotations': {
-                            'kubectl.kubernetes.io/restartedAt': now
-                        }
-                    }
-                }
-            }
-        }
-        apps_v1.patch_namespaced_deployment(name=name, namespace=namespace, body=body)
+        k8s = K8sCLI()
+        k8s.deployments.restart(name=name, namespace=namespace)
         return redirect('tool_detail', tool_name='k8s')
     except Exception as e:
         return HttpResponse(str(e), status=500)
@@ -113,65 +81,33 @@ def k8s_resource_describe(request, resource_type, namespace, name):
 
 @login_required
 def k8s_resource_yaml(request, resource_type, namespace, name):
-    if not setup_k8s_client():
-        return HttpResponse("K8s not available", status=500)
-    
-    api_map = {
-        'pod': k8s_client.CoreV1Api().read_namespaced_pod,
-        'deployment': k8s_client.AppsV1Api().read_namespaced_deployment,
-        'service': k8s_client.CoreV1Api().read_namespaced_service,
-        'configmap': k8s_client.CoreV1Api().read_namespaced_config_map,
-        'secret': k8s_client.CoreV1Api().read_namespaced_secret,
-    }
-    
-    read_func = api_map.get(resource_type)
-    if not read_func:
-        return HttpResponse("Invalid resource type", status=400)
+    kconfig = get_kubeconfig()
+    env = os.environ.copy()
+    if kconfig:
+        env['KUBECONFIG'] = kconfig
 
     try:
-        resource = read_func(name=name, namespace=namespace)
-        resource_dict = k8s_client.ApiClient().sanitize_for_serialization(resource)
-        
-        def strip_read_only(d):
-            if not isinstance(d, dict): return
-            d.pop('status', None)
-            if 'metadata' in d:
-                m = d['metadata']
-                for field in ['uid', 'resourceVersion', 'creationTimestamp', 'generation', 'managedFields', 'selfLink']:
-                    m.pop(field, None)
-        
-        strip_read_only(resource_dict)
-
-        # Custom YAML dumper for better readability
-        class K8sDumper(yaml.SafeDumper):
-            def increase_indent(self, flow=False, indentless=False):
-                return super(K8sDumper, self).increase_indent(flow, False)
-
-        def str_presenter(dumper, data):
-            # Normalize newlines
-            data = data.replace('\r\n', '\n').replace('\r', '\n')
-            if '\n' in data:
-                return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
-            return dumper.represent_scalar('tag:yaml.org,2002:str', data)
-        
-        K8sDumper.add_representer(str, str_presenter)
-        
-        # Use a larger indent to ensure block scalars are clearly separated
-        yaml_content = yaml.dump(resource_dict, Dumper=K8sDumper, default_flow_style=False, sort_keys=False, indent=4)
-        
         if request.method == 'POST':
             new_yaml_str = request.POST.get('yaml')
             try:
-                kconfig = get_kubeconfig()
-                env = os.environ.copy()
-                if kconfig:
-                    env['KUBECONFIG'] = kconfig
-
                 # Use run_command for apply
-                run_command(['kubectl', 'apply', '-f', '-'], input_data=new_yaml_str, env=env)
+                run_command(['kubectl', 'apply', '-f', '-'], input_data=new_yaml_str.encode(), env=env)
                 return HttpResponse("Resource updated successfully.", status=200)
             except Exception as e:
                 return HttpResponse(f"Update failed: {str(e)}", status=500)
+
+        # Get YAML using kubectl
+        cmd = ['kubectl', 'get', resource_type, name, '-o', 'yaml']
+        if namespace:
+            cmd.extend(['-n', namespace])
+        
+        yaml_content = run_command(cmd, env=env).decode()
+        
+        # Optionally strip some fields for cleaner editing
+        # But kubectl get -o yaml includes them. 
+        # For a better experience we might want to strip them like before.
+        # However, for simplicity and since we are moving to CLI, 
+        # let's just use what kubectl gives us.
             
         return HttpResponse(yaml_content)
     except Exception as e:
