@@ -300,8 +300,8 @@ def k8s_repair_ip(request):
         if os.path.exists(admin_conf):
             dest = '/root/.kube/config'
             os.makedirs(os.path.dirname(dest), exist_ok=True)
-            import shutil
-            shutil.copy2(admin_conf, dest)
+            # Use run_command with cp -f to avoid interactive prompts
+            run_command(['cp', '-f', admin_conf, dest])
             os.chmod(dest, 0o644)
 
         # 6. Restart kubelet

@@ -337,7 +337,7 @@ class Module(BaseModule):
                 ("Configuring containerd (CRI)...", "mkdir -p /etc/containerd && containerd config default | tee /etc/containerd/config.toml > /dev/null && sed -i \"s/SystemdCgroup = false/SystemdCgroup = true/g\" /etc/containerd/config.toml && systemctl restart containerd"),
                 ("Pulling Kubernetes images...", "kubeadm config images pull"),
                 ("Initializing Kubernetes cluster...", f"kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address={primary_ip} || true"),
-                ("Setting up kubeconfig...", "mkdir -p /root/.kube && cp -i /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config"),
+                ("Setting up kubeconfig...", "mkdir -p /root/.kube && cp -f /etc/kubernetes/admin.conf /root/.kube/config && chmod 644 /root/.kube/config"),
                 ("Installing Network Plugin (Flannel)...", "kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"),
                 ("Allowing pods on control-plane...", "kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true"),
             ]
