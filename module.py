@@ -167,7 +167,7 @@ class Module(BaseModule):
             return context
         
         if cache.get(probing_key):
-            context['k8s_error'] = "Cluster connectivity check in progress..."
+            context['k8s_info'] = "Cluster connectivity check in progress..."
             context['is_probing'] = True
             return context
             

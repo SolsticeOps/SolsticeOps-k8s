@@ -4,6 +4,13 @@
 </div>
 {% endif %}
 
+{% if k8s_info %}
+<div class="alert alert-info py-2 small mb-3">
+    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+    {{ k8s_info }}
+</div>
+{% endif %}
+
 {% if k8s_ip_mismatch %}
 <div class="alert alert-warning py-3 mb-3">
     <div class="d-flex align-items-center">
