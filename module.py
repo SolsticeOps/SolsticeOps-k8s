@@ -4,6 +4,8 @@ import os
 import logging
 import yaml
 import re
+import socket
+import psutil
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.urls import path, re_path
@@ -194,12 +196,19 @@ class Module(BaseModule):
                     match = re.search(r'https://([^:]+):', server_url)
                     if match:
                         config_ip = match.group(1)
-                        current_ip = get_primary_ip()
-                        if config_ip != current_ip and config_ip not in ['127.0.0.1', 'localhost']:
-                            context['k8s_ip_mismatch'] = {
-                                'config_ip': config_ip,
-                                'current_ip': current_ip
-                            }
+                        if config_ip not in ['127.0.0.1', 'localhost']:
+                            local_ips = []
+                            for interface, addrs in psutil.net_if_addrs().items():
+                                for addr in addrs:
+                                    if addr.family == socket.AF_INET:
+                                        local_ips.append(addr.address)
+                            
+                            if config_ip not in local_ips:
+                                current_ip = get_primary_ip()
+                                context['k8s_ip_mismatch'] = {
+                                    'config_ip': config_ip,
+                                    'current_ip': current_ip
+                                }
             except Exception as e:
                 logger.debug(f"Failed to check IP mismatch: {e}")
 
