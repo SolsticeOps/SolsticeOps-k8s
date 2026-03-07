@@ -32,8 +32,21 @@
 {% endif %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <div class="small">
-        <span class="text-muted">Context:</span> <span class="badge bg-light text-dark border">{{ k8s_context }}</span>
+    <div class="small d-flex align-items-center gap-3">
+        <div>
+            <span class="text-muted">Context:</span> <span class="badge bg-light text-dark border">{{ k8s_context }}</span>
+        </div>
+        <form onsubmit="event.preventDefault(); updateK8sSearch(this.search.value, true)" class="input-group input-group-sm" style="width: 250px;">
+            <span class="input-group-text bg-transparent border-secondary border-opacity-25 text-muted">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" 
+                   name="search" 
+                   class="form-control border-secondary border-opacity-25 bg-transparent" 
+                   placeholder="Search..." 
+                   value="{{ search_query }}">
+            <button type="submit" class="btn btn-outline-secondary border-secondary border-opacity-25">Search</button>
+        </form>
     </div>
     <div class="d-flex gap-2">
         <select class="form-select form-select-sm" style="width: 200px;" onchange="filterByNamespace(this.value)">
@@ -44,3 +57,31 @@
         </select>
     </div>
 </div>
+
+<script>
+    function updateK8sSearch(val, immediate = false) {
+        // Find active tab
+        const activeBtn = document.querySelector('#resourceTabs .nav-link.active');
+        if (activeBtn) {
+            const target = activeBtn.getAttribute('data-bs-target');
+            const hxGet = activeBtn.getAttribute('hx-get');
+            if (hxGet) {
+                const url = new URL(hxGet, window.location.origin);
+                url.searchParams.set('search', val);
+                
+                // Include current per_page if available
+                const perPageSelect = document.querySelector(target + " select[name='per_page']");
+                if (perPageSelect) url.searchParams.set('per_page', perPageSelect.value);
+                
+                if (window.k8sSearchTimeout) clearTimeout(window.k8sSearchTimeout);
+                
+                const performSearch = () => {
+                    htmx.ajax('GET', url.toString(), {target: target, swap: 'morph'});
+                };
+
+                if (immediate) performSearch();
+                else window.k8sSearchTimeout = setTimeout(performSearch, 500);
+            }
+        }
+    }
+</script>

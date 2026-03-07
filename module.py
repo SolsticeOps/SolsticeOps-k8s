@@ -230,13 +230,98 @@ class Module(BaseModule):
             namespace = request.GET.get('namespace')
             all_namespaces = not bool(namespace)
 
-            context['k8s_pods'] = k8s.pods.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_deployments'] = k8s.deployments.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_services'] = k8s.services.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_configmaps'] = k8s.configmaps.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_secrets'] = k8s.secrets.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_events'] = k8s.events.list(namespace=namespace, all_namespaces=all_namespaces)
-            context['k8s_nodes'] = k8s.nodes.list()
+            # Search and Pagination
+            from core.utils import paginate_list
+            search_query = request.GET.get('search', '')
+            page = request.GET.get('page', 1)
+            per_page = request.GET.get('per_page', 10)
+            target_tab = request.GET.get('tab', 'k8s_pods')
+
+            # Pods
+            pods = k8s.pods.list(namespace=namespace, all_namespaces=all_namespaces)
+            pod_pagination = paginate_list(
+                pods, 
+                page if target_tab == 'k8s_pods' else 1, 
+                per_page if target_tab == 'k8s_pods' else 10,
+                search_query=search_query if target_tab == 'k8s_pods' else None,
+                search_fields=['name', 'namespace', 'status.phase']
+            )
+            context['k8s_pods'] = pod_pagination['items']
+            context['pods_pagination'] = pod_pagination
+
+            # Deployments
+            deployments = k8s.deployments.list(namespace=namespace, all_namespaces=all_namespaces)
+            deployment_pagination = paginate_list(
+                deployments,
+                page if target_tab == 'k8s_deployments' else 1,
+                per_page if target_tab == 'k8s_deployments' else 10,
+                search_query=search_query if target_tab == 'k8s_deployments' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_deployments'] = deployment_pagination['items']
+            context['deployments_pagination'] = deployment_pagination
+
+            # Services
+            services = k8s.services.list(namespace=namespace, all_namespaces=all_namespaces)
+            service_pagination = paginate_list(
+                services,
+                page if target_tab == 'k8s_services' else 1,
+                per_page if target_tab == 'k8s_services' else 10,
+                search_query=search_query if target_tab == 'k8s_services' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_services'] = service_pagination['items']
+            context['services_pagination'] = service_pagination
+
+            # ConfigMaps
+            configmaps = k8s.configmaps.list(namespace=namespace, all_namespaces=all_namespaces)
+            configmap_pagination = paginate_list(
+                configmaps,
+                page if target_tab == 'k8s_configmaps' else 1,
+                per_page if target_tab == 'k8s_configmaps' else 10,
+                search_query=search_query if target_tab == 'k8s_configmaps' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_configmaps'] = configmap_pagination['items']
+            context['configmaps_pagination'] = configmap_pagination
+
+            # Secrets
+            secrets = k8s.secrets.list(namespace=namespace, all_namespaces=all_namespaces)
+            secret_pagination = paginate_list(
+                secrets,
+                page if target_tab == 'k8s_secrets' else 1,
+                per_page if target_tab == 'k8s_secrets' else 10,
+                search_query=search_query if target_tab == 'k8s_secrets' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_secrets'] = secret_pagination['items']
+            context['secrets_pagination'] = secret_pagination
+
+            # Events
+            events = k8s.events.list(namespace=namespace, all_namespaces=all_namespaces)
+            event_pagination = paginate_list(
+                events,
+                page if target_tab == 'k8s_events' else 1,
+                per_page if target_tab == 'k8s_events' else 10,
+                search_query=search_query if target_tab == 'k8s_events' else None,
+                search_fields=['message', 'reason', 'involvedObject.name']
+            )
+            context['k8s_events'] = event_pagination['items']
+            context['events_pagination'] = event_pagination
+
+            # Nodes
+            nodes = k8s.nodes.list()
+            node_pagination = paginate_list(
+                nodes,
+                page if target_tab == 'k8s_nodes' else 1,
+                per_page if target_tab == 'k8s_nodes' else 10,
+                search_query=search_query if target_tab == 'k8s_nodes' else None,
+                search_fields=['name']
+            )
+            context['k8s_nodes'] = node_pagination['items']
+            context['nodes_pagination'] = node_pagination
+            
+            context['search_query'] = search_query
             
             if namespace:
                 context['current_namespace'] = namespace

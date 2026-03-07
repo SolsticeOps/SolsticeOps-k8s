@@ -50,3 +50,5 @@
     </div>
     {% endfor %}
 </div>
+
+{% include 'core/partials/pagination.html' with pagination=nodes_pagination base_url="/tool/k8s/?tab=k8s_nodes" target="#nodes" show_per_page_select=True include_selector=".main-content input[name='search']" %}

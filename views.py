@@ -4,7 +4,7 @@ import yaml
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
-from core.utils import run_command, get_primary_ip
+from core.utils import run_command, get_primary_ip, devops_admin_required
 from core.k8s_cli_wrapper import K8sCLI, get_kubeconfig
 
 @login_required
@@ -34,6 +34,7 @@ def k8s_pod_logs_download(request, namespace, pod_name):
         return HttpResponse(f"Error downloading pod logs: {str(e)}", status=500)
 
 @login_required
+@devops_admin_required
 def k8s_pod_action(request, namespace, pod_name, action):
     try:
         k8s = K8sCLI()
@@ -45,6 +46,7 @@ def k8s_pod_action(request, namespace, pod_name, action):
     return redirect('tool_detail', tool_name='k8s')
 
 @login_required
+@devops_admin_required
 def k8s_deployment_scale(request, namespace, name, replicas):
     try:
         k8s = K8sCLI()
@@ -54,6 +56,7 @@ def k8s_deployment_scale(request, namespace, name, replicas):
         return HttpResponse(str(e), status=500)
 
 @login_required
+@devops_admin_required
 def k8s_deployment_restart(request, namespace, name):
     try:
         k8s = K8sCLI()
@@ -88,6 +91,10 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
 
     try:
         if request.method == 'POST':
+            # Check for admin role on write
+            if not request.user.can_manage_infrastructure:
+                return HttpResponse("Permission denied: DevOps Admin role required.", status=403)
+                
             new_yaml_str = request.POST.get('yaml')
             try:
                 # Use run_command for apply
@@ -102,18 +109,12 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
             cmd.extend(['-n', namespace])
         
         yaml_content = run_command(cmd, env=env).decode()
-        
-        # Optionally strip some fields for cleaner editing
-        # But kubectl get -o yaml includes them. 
-        # For a better experience we might want to strip them like before.
-        # However, for simplicity and since we are moving to CLI, 
-        # let's just use what kubectl gives us.
-            
         return HttpResponse(yaml_content)
     except Exception as e:
         return HttpResponse(str(e), status=500)
 
 @login_required
+@devops_admin_required
 def k8s_terminal_run(request):
     if request.method == 'POST':
         command = request.POST.get('command', '').strip()
@@ -147,6 +148,10 @@ def k8s_terminal_run(request):
 
 @login_required
 def k8s_pod_shell(request, namespace, pod_name):
+    # This just initialises the UI, the actual shell is a WebSocket
+    # We should probably check permissions in the consumer too, but for now let's protect the view
+    if not request.user.can_manage_infrastructure:
+        return HttpResponse("Permission denied", status=403)
     return HttpResponse("Shell initialised")
 
 @login_required
@@ -193,6 +198,7 @@ def k8s_service_logs_download(request):
         return HttpResponse(f"Error downloading system logs: {str(e)}", status=500)
 
 @login_required
+@devops_admin_required
 def k8s_repair_ip(request):
     """
     Attempts to repair Kubernetes configuration after a server IP change.

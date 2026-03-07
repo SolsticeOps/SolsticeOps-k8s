@@ -71,3 +71,5 @@
     </div>
     {% endfor %}
 </div>
+
+{% include 'core/partials/pagination.html' with pagination=deployments_pagination base_url="/tool/k8s/?tab=k8s_deployments" target="#deployments" show_per_page_select=True include_selector=".main-content input[name='search'], .main-content select[onchange='filterByNamespace(this.value)']" %}

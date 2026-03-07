@@ -30,3 +30,5 @@
         </tbody>
     </table>
 </div>
+
+{% include 'core/partials/pagination.html' with pagination=events_pagination base_url="/tool/k8s/?tab=k8s_events" target="#events" show_per_page_select=True include_selector=".main-content input[name='search'], .main-content select[onchange='filterByNamespace(this.value)']" %}
