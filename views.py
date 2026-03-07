@@ -36,6 +36,7 @@ def k8s_pod_logs_download(request, namespace, pod_name):
 @login_required
 @devops_admin_required
 def k8s_pod_action(request, namespace, pod_name, action):
+
     try:
         k8s = K8sCLI()
         if action == 'delete':
@@ -116,6 +117,7 @@ def k8s_resource_yaml(request, resource_type, namespace, name):
 @login_required
 @devops_admin_required
 def k8s_terminal_run(request):
+
     if request.method == 'POST':
         command = request.POST.get('command', '').strip()
         namespace = request.POST.get('namespace')
@@ -130,6 +132,8 @@ def k8s_terminal_run(request):
             full_command = f"kubectl exec -n {namespace} {pod} -- {command}"
             display_prompt = f"# {command}"
         else:
+            # Check for admin role on non-read-only kubectl commands if needed
+            # But k8s_terminal_run is already @devops_admin_required, so we are safe.
             if not command.startswith('kubectl'):
                 command = 'kubectl ' + command
             if ' get ' in command and not any(x in command for x in [' -n ', ' --namespace', ' -A', ' --all-namespaces']):
@@ -179,6 +183,26 @@ def k8s_service_logs(request):
 
 @login_required
 def k8s_service_logs_download(request):
+
+    try:
+        services = ['kubelet', 'k3s', 'microk8s']
+        output = ""
+        
+        for service in services:
+            try:
+                output = run_command(['journalctl', '-u', service, '--no-pager']).decode()
+                if output.strip() and "No entries" not in output:
+                    break
+            except subprocess.CalledProcessError:
+                continue
+        
+        response = HttpResponse(output, content_type='text/plain')
+        response['Content-Disposition'] = 'attachment; filename="k8s_service_logs.log"'
+        return response
+    except Exception as e:
+        return HttpResponse(f"Error downloading system logs: {str(e)}", status=500)
+
+
     try:
         services = ['kubelet', 'k3s', 'microk8s']
         output = ""

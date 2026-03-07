@@ -33,26 +33,59 @@ class K8sSession(TerminalSession):
         self._setup_session()
 
     def _setup_session(self):
-        self.stream = stream.stream(
-            self.api.connect_get_namespaced_pod_exec, self.pod_name, self.namespace,
-            command=['sh'], stderr=True, stdin=True, stdout=True, tty=True, _preload_content=False
+        # We'll use kubectl exec directly via a PTY to support TTY features better
+        self.master_fd, self.slave_fd = pty.openpty()
+        
+        kconfig = get_kubeconfig()
+        cmd = ['kubectl', 'exec', '-it', self.pod_name, '-n', self.namespace, '--', 'sh']
+
+        env = os.environ.copy()
+        if kconfig:
+            env['KUBECONFIG'] = kconfig
+        env['TERM'] = 'xterm-256color'
+
+        self.process = subprocess.Popen(
+            cmd, preexec_fn=os.setsid, stdin=self.slave_fd, stdout=self.slave_fd, stderr=self.slave_fd,
+            universal_newlines=False, env=env
         )
+        os.close(self.slave_fd)
+
 
     def run(self):
         try:
-            while self.keep_running and self.stream.is_open():
-                self.stream.update(timeout=0.1)
-                if self.stream.peek_stdout():
-                    self.add_history(self.stream.read_stdout().encode())
-                if self.stream.peek_stderr():
-                    self.add_history(self.stream.read_stderr().encode())
+            while self.keep_running:
+                if self.process.poll() is not None:
+                    break
+                r, w, e = select.select([self.master_fd], [], [], 0.5)
+                if self.master_fd in r:
+                    data = os.read(self.master_fd, 4096)
+                    if data:
+                        self.add_history(data)
+                    else:
+                        break
         except:
             pass
-        self.stream.close()
+        finally:
+            try:
+                os.close(self.master_fd)
+            except:
+                pass
+            if self.process.poll() is None:
+                self.process.terminate()
 
     def send_input(self, data):
-        if self.stream.is_open():
-            self.stream.write_stdin(data)
+        try:
+            os.write(self.master_fd, data.encode())
+        except:
+            pass
+
+    def resize(self, rows, cols):
+        try:
+            import fcntl, termios, struct
+            s = struct.pack('HHHH', rows, cols, 0, 0)
+            fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, s)
+        except:
+            pass
 
 class Module(BaseModule):
     @property

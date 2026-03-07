@@ -28,11 +28,13 @@
                                 onclick="openPodLogs('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
                             <i class="bi bi-file-text text-info"></i>
                         </button>
-                        <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
-                                title="Shell" style="background-color: var(--icon-box) !important;"
-                                onclick="openPodShell('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
-                            <i class="bi bi-terminal text-secondary"></i>
-                        </button>
+                        {% if user.can_manage_infrastructure %}
+                            <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
+                                    title="Shell" style="background-color: var(--icon-box) !important;"
+                                    onclick="openPodShell('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
+                                <i class="bi bi-terminal text-secondary"></i>
+                            </button>
+                        {% endif %}
                         <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
                                 title="Describe" style="background-color: var(--icon-box) !important;"
                                 onclick="openDescribe('pod', '{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
@@ -43,13 +45,15 @@
                                 onclick="openYamlEditor('pod', '{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
                             <i class="bi bi-pencil-square text-warning"></i>
                         </button>
-                        <button class="btn btn-sm btn-dark border border-danger border-opacity-25 ms-2" 
-                                title="Delete" style="background-color: var(--icon-box) !important;"
-                                hx-post="{% url 'k8s_pod_action' pod.metadata.namespace pod.metadata.name 'delete' %}"
-                                hx-confirm="Are you sure you want to delete pod {{ pod.metadata.name }}?"
-                                hx-target="#pods">
-                            <i class="bi bi-trash text-danger"></i>
-                        </button>
+                        {% if user.can_manage_infrastructure %}
+                            <button class="btn btn-sm btn-dark border border-danger border-opacity-25 ms-2" 
+                                    title="Delete" style="background-color: var(--icon-box) !important;"
+                                    hx-post="{% url 'k8s_pod_action' pod.metadata.namespace pod.metadata.name 'delete' %}"
+                                    hx-confirm="Are you sure you want to delete pod {{ pod.metadata.name }}?"
+                                    hx-target="#pods">
+                                <i class="bi bi-trash text-danger"></i>
+                            </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>

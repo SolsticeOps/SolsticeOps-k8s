@@ -25,6 +25,7 @@
                             <span class="text-muted small font-monospace fw-bold" style="font-size: 0.75rem;">
                                 {{ dep.status.ready_replicas|default:0 }}/{{ dep.spec.replicas|default:0 }}
                             </span>
+                            {% if user.can_manage_infrastructure %}
                             <div class="btn-group border rounded-2 overflow-hidden" style="background-color: var(--icon-box) !important;">
                                 <button class="btn btn-dark border-0 px-2 py-0" 
                                         hx-post="{% url 'k8s_deployment_scale' dep.metadata.namespace dep.metadata.name dep.spec.replicas|add:'-1' %}?tab=k8s_deployments" 
@@ -35,10 +36,12 @@
                                         hx-target="#deployments" 
                                         hx-swap="innerHTML" style="font-size: 0.7rem;"><i class="bi bi-plus"></i></button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Actions -->
                         <div class="d-flex gap-1 border-start ps-4">
+                            {% if user.can_manage_infrastructure %}
                             <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
                                     title="Rollout Restart" style="background-color: var(--icon-box) !important;"
                                     hx-post="{% url 'k8s_deployment_restart' dep.metadata.namespace dep.metadata.name %}"
@@ -46,6 +49,7 @@
                                     hx-confirm="Restart all pods in deployment {{ dep.metadata.name }}?">
                                 <i class="bi bi-arrow-clockwise text-primary"></i>
                             </button>
+                            {% endif %}
                             <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
                                     title="Describe" style="background-color: var(--icon-box) !important;"
                                     onclick="openDescribe('deployment', '{{ dep.metadata.namespace }}', '{{ dep.metadata.name }}')">
