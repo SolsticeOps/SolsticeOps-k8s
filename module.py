@@ -137,13 +137,13 @@ class Module(BaseModule):
 
     def get_resource_tabs(self):
         return [
-            {'id': 'pods', 'label': 'Pods', 'template': 'core/partials/k8s_pods.html', 'hx_get': '/tool/k8s/?tab=k8s_pods', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'deployments', 'label': 'Deployments', 'template': 'core/partials/k8s_deployments.html', 'hx_get': '/tool/k8s/?tab=k8s_deployments', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'services', 'label': 'Services', 'template': 'core/partials/k8s_services.html', 'hx_get': '/tool/k8s/?tab=k8s_services', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'nodes', 'label': 'Nodes', 'template': 'core/partials/k8s_nodes.html', 'hx_get': '/tool/k8s/?tab=k8s_nodes', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'configmaps', 'label': 'ConfigMaps', 'template': 'core/partials/k8s_configmaps.html', 'hx_get': '/tool/k8s/?tab=k8s_configmaps', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'secrets', 'label': 'Secrets', 'template': 'core/partials/k8s_secrets.html', 'hx_get': '/tool/k8s/?tab=k8s_secrets', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
-            {'id': 'events', 'label': 'Events', 'template': 'core/partials/k8s_events.html', 'hx_get': '/tool/k8s/?tab=k8s_events', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\')]'},
+            {'id': 'pods', 'label': 'Pods', 'template': 'core/partials/k8s_pods.html', 'hx_get': '/tool/k8s/?tab=k8s_pods', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'deployments', 'label': 'Deployments', 'template': 'core/partials/k8s_deployments.html', 'hx_get': '/tool/k8s/?tab=k8s_deployments', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'services', 'label': 'Services', 'template': 'core/partials/k8s_services.html', 'hx_get': '/tool/k8s/?tab=k8s_services', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'nodes', 'label': 'Nodes', 'template': 'core/partials/k8s_nodes.html', 'hx_get': '/tool/k8s/?tab=k8s_nodes', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'configmaps', 'label': 'ConfigMaps', 'template': 'core/partials/k8s_configmaps.html', 'hx_get': '/tool/k8s/?tab=k8s_configmaps', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'secrets', 'label': 'Secrets', 'template': 'core/partials/k8s_secrets.html', 'hx_get': '/tool/k8s/?tab=k8s_secrets', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
+            {'id': 'events', 'label': 'Events', 'template': 'core/partials/k8s_events.html', 'hx_get': '/tool/k8s/?tab=k8s_events', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
         ]
 
     def get_context_data(self, request, tool):
@@ -323,7 +323,7 @@ class Module(BaseModule):
             
             context['search_query'] = search_query
             
-            if namespace:
+            if namespace is not None:
                 context['current_namespace'] = namespace
             
             context['k8s_available'] = True
