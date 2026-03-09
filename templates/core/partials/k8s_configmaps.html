@@ -23,9 +23,9 @@
                 <td class="text-end">
                     <div class="btn-group btn-group-sm">
                         <button class="btn btn-outline-info" 
-                                title="Edit YAML"
+                                title="{% if user.can_manage_infrastructure %}Edit YAML{% else %}View YAML{% endif %}"
                                 onclick="openYamlEditor('configmap', '{{ cm.metadata.namespace }}', '{{ cm.metadata.name }}')">
-                            <i class="bi bi-pencil-square"></i>
+                            <i class="bi {% if user.can_manage_infrastructure %}bi-pencil-square{% else %}bi-eye{% endif %}"></i>
                         </button>
                     </div>
                 </td>

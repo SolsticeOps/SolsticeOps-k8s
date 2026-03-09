@@ -25,40 +25,50 @@
                             <span class="text-muted small font-monospace fw-bold" style="font-size: 0.75rem;">
                                 {{ dep.status.ready_replicas|default:0 }}/{{ dep.spec.replicas|default:0 }}
                             </span>
-                            {% if user.can_manage_infrastructure %}
-                            <div class="btn-group border rounded-2 overflow-hidden" style="background-color: var(--icon-box) !important;">
+                            <div class="btn-group border rounded-2 overflow-hidden {% if not user.can_manage_infrastructure %}opacity-50{% endif %}" style="background-color: var(--icon-box) !important;">
                                 <button class="btn btn-dark border-0 px-2 py-0" 
+                                        {% if user.can_manage_infrastructure %}
                                         hx-post="{% url 'k8s_deployment_scale' dep.metadata.namespace dep.metadata.name dep.spec.replicas|add:'-1' %}?tab=k8s_deployments" 
                                         hx-target="#deployments" 
-                                        hx-swap="innerHTML" style="font-size: 0.7rem;"><i class="bi bi-dash"></i></button>
+                                        hx-swap="innerHTML"
+                                        {% else %}
+                                        disabled
+                                        {% endif %}
+                                        style="font-size: 0.7rem;"><i class="bi bi-dash"></i></button>
                                 <button class="btn btn-dark border-0 px-2 py-0" 
+                                        {% if user.can_manage_infrastructure %}
                                         hx-post="{% url 'k8s_deployment_scale' dep.metadata.namespace dep.metadata.name dep.spec.replicas|add:'1' %}?tab=k8s_deployments" 
                                         hx-target="#deployments" 
-                                        hx-swap="innerHTML" style="font-size: 0.7rem;"><i class="bi bi-plus"></i></button>
+                                        hx-swap="innerHTML"
+                                        {% else %}
+                                        disabled
+                                        {% endif %}
+                                        style="font-size: 0.7rem;"><i class="bi bi-plus"></i></button>
                             </div>
-                            {% endif %}
                         </div>
 
                         <!-- Actions -->
                         <div class="d-flex gap-1 border-start ps-4">
-                            {% if user.can_manage_infrastructure %}
-                            <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
+                            <button class="btn btn-sm btn-dark border border-secondary border-opacity-25 {% if not user.can_manage_infrastructure %}opacity-50{% endif %}" 
                                     title="Rollout Restart" style="background-color: var(--icon-box) !important;"
+                                    {% if user.can_manage_infrastructure %}
                                     hx-post="{% url 'k8s_deployment_restart' dep.metadata.namespace dep.metadata.name %}"
                                     hx-target="#deployments"
-                                    hx-confirm="Restart all pods in deployment {{ dep.metadata.name }}?">
+                                    hx-confirm="Restart all pods in deployment {{ dep.metadata.name }}?"
+                                    {% else %}
+                                    disabled
+                                    {% endif %}>
                                 <i class="bi bi-arrow-clockwise text-primary"></i>
                             </button>
-                            {% endif %}
                             <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
                                     title="Describe" style="background-color: var(--icon-box) !important;"
                                     onclick="openDescribe('deployment', '{{ dep.metadata.namespace }}', '{{ dep.metadata.name }}')">
                                 <i class="bi bi-info-circle text-info"></i>
                             </button>
                             <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
-                                    title="Edit YAML" style="background-color: var(--icon-box) !important;"
+                                    title="{% if user.can_manage_infrastructure %}Edit YAML{% else %}View YAML{% endif %}" style="background-color: var(--icon-box) !important;"
                                     onclick="openYamlEditor('deployment', '{{ dep.metadata.namespace }}', '{{ dep.metadata.name }}')">
-                                <i class="bi bi-pencil-square text-warning"></i>
+                                <i class="bi {% if user.can_manage_infrastructure %}bi-pencil-square{% else %}bi-eye{% endif %} text-warning"></i>
                             </button>
                         </div>
                     </div>

@@ -46,6 +46,9 @@
                     aceEditor.setTheme("ace/theme/monokai");
                     aceEditor.session.setMode("ace/mode/yaml");
                     aceEditor.setShowPrintMargin(false);
+                    {% if not user.can_manage_infrastructure %}
+                    aceEditor.setReadOnly(true);
+                    {% endif %}
                 }
                 aceEditor.setValue(yaml, -1);
                 new bootstrap.Modal(document.getElementById('yamlModal')).show();

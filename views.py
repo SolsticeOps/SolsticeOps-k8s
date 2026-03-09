@@ -153,9 +153,8 @@ def k8s_terminal_run(request):
 @login_required
 def k8s_pod_shell(request, namespace, pod_name):
     # This just initialises the UI, the actual shell is a WebSocket
-    # We should probably check permissions in the consumer too, but for now let's protect the view
     if not request.user.can_manage_infrastructure:
-        return HttpResponse("Permission denied", status=403)
+        return HttpResponse("Permission denied: DevOps Admin role required.", status=403)
     return HttpResponse("Shell initialised")
 
 @login_required

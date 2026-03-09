@@ -28,32 +28,33 @@
                                 onclick="openPodLogs('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
                             <i class="bi bi-file-text text-info"></i>
                         </button>
-                        {% if user.can_manage_infrastructure %}
-                            <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
-                                    title="Shell" style="background-color: var(--icon-box) !important;"
-                                    onclick="openPodShell('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
-                                <i class="bi bi-terminal text-secondary"></i>
-                            </button>
-                        {% endif %}
+                        <button class="btn btn-sm btn-dark border border-secondary border-opacity-25 {% if not user.can_manage_infrastructure %}opacity-50{% endif %}" 
+                                title="Shell" style="background-color: var(--icon-box) !important;"
+                                {% if not user.can_manage_infrastructure %}disabled{% endif %}
+                                onclick="openPodShell('{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
+                            <i class="bi bi-terminal text-secondary"></i>
+                        </button>
                         <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
                                 title="Describe" style="background-color: var(--icon-box) !important;"
                                 onclick="openDescribe('pod', '{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
                             <i class="bi bi-info-circle text-primary"></i>
                         </button>
                         <button class="btn btn-sm btn-dark border border-secondary border-opacity-25" 
-                                title="Edit YAML" style="background-color: var(--icon-box) !important;"
+                                title="{% if user.can_manage_infrastructure %}Edit YAML{% else %}View YAML{% endif %}" style="background-color: var(--icon-box) !important;"
                                 onclick="openYamlEditor('pod', '{{ pod.metadata.namespace }}', '{{ pod.metadata.name }}')">
-                            <i class="bi bi-pencil-square text-warning"></i>
+                            <i class="bi {% if user.can_manage_infrastructure %}bi-pencil-square{% else %}bi-eye{% endif %} text-warning"></i>
                         </button>
-                        {% if user.can_manage_infrastructure %}
-                            <button class="btn btn-sm btn-dark border border-danger border-opacity-25 ms-2" 
-                                    title="Delete" style="background-color: var(--icon-box) !important;"
-                                    hx-post="{% url 'k8s_pod_action' pod.metadata.namespace pod.metadata.name 'delete' %}"
-                                    hx-confirm="Are you sure you want to delete pod {{ pod.metadata.name }}?"
-                                    hx-target="#pods">
-                                <i class="bi bi-trash text-danger"></i>
-                            </button>
-                        {% endif %}
+                        <button class="btn btn-sm btn-dark border border-danger border-opacity-25 ms-2 {% if not user.can_manage_infrastructure %}opacity-50{% endif %}" 
+                                title="Delete" style="background-color: var(--icon-box) !important;"
+                                {% if user.can_manage_infrastructure %}
+                                hx-post="{% url 'k8s_pod_action' pod.metadata.namespace pod.metadata.name 'delete' %}"
+                                hx-confirm="Are you sure you want to delete pod {{ pod.metadata.name }}?"
+                                hx-target="#pods"
+                                {% else %}
+                                disabled
+                                {% endif %}>
+                            <i class="bi bi-trash text-danger"></i>
+                        </button>
                     </div>
                 </div>
             </div>
