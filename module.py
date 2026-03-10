@@ -6,12 +6,13 @@ import yaml
 import re
 import socket
 import psutil
+import time
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
 from django.urls import path, re_path
 from core.plugin_system import BaseModule
 from core.terminal_manager import TerminalSession
-from core.utils import run_command, get_primary_ip
+from core.utils import run_command, get_primary_ip, paginate_list
 from core.k8s_cli_wrapper import K8sCLI, get_kubeconfig
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,7 @@ class Module(BaseModule):
             {'id': 'events', 'label': 'Events', 'template': 'core/partials/k8s_events.html', 'hx_get': '/tool/k8s/?tab=k8s_events', 'hx_auto_refresh': 'every 5s [this.classList.contains(\'active\') && document.activeElement.tagName !== \'INPUT\' && document.activeElement.tagName !== \'SELECT\' && document.activeElement.tagName !== \'TEXTAREA\']'},
         ]
 
-    def get_context_data(self, request, tool):
+    def get_context_data(self, request, tool, force_refresh=False):
         from django.core.cache import cache
         
         context = {
@@ -211,11 +212,11 @@ class Module(BaseModule):
         probing_key = f'k8s_probing_{tool.id}'
         
         last_error = cache.get(cache_key)
-        if last_error:
+        if last_error and not force_refresh:
             context['k8s_error'] = f"Cluster unreachable (cached): {last_error}"
             return context
         
-        if cache.get(probing_key):
+        if cache.get(probing_key) and not force_refresh:
             context['k8s_info'] = "Cluster connectivity check in progress..."
             context['is_probing'] = True
             return context
@@ -227,7 +228,8 @@ class Module(BaseModule):
                 return context
 
             # Set a probing flag for 10 seconds while we attempt to connect
-            cache.set(probing_key, True, 10)
+            if not force_refresh:
+                cache.set(probing_key, True, 10)
 
             # Check for IP mismatch
             try:
@@ -255,31 +257,62 @@ class Module(BaseModule):
 
             k8s = K8sCLI()
             
-            # Quick connectivity check
-            namespaces = k8s.get_namespaces()
-            if not namespaces:
-                # If namespaces list is empty, it might be an error or just empty (unlikely for a working cluster)
-                # But get_namespaces returns [] on error too.
-                # Let's try to get info to confirm
-                if not k8s.info():
-                    raise Exception("Failed to connect to Kubernetes cluster.")
+            # Fetch raw data with caching
+            cache_key_raw = f'k8s_raw_data_{tool.id}'
+            raw_data = cache.get(cache_key_raw)
             
+            if not raw_data or force_refresh:
+                # Quick connectivity check
+                namespaces = k8s.get_namespaces()
+                if not namespaces:
+                    if not k8s.info():
+                        raise Exception("Failed to connect to Kubernetes cluster.")
+                
+                raw_data = {
+                    'namespaces': namespaces,
+                    'context': k8s.get_context(),
+                    'pods': k8s.pods.list(all_namespaces=True),
+                    'deployments': k8s.deployments.list(all_namespaces=True),
+                    'services': k8s.services.list(all_namespaces=True),
+                    'configmaps': k8s.configmaps.list(all_namespaces=True),
+                    'secrets': k8s.secrets.list(all_namespaces=True),
+                    'events': k8s.events.list(all_namespaces=True),
+                    'nodes': k8s.nodes.list(),
+                    'timestamp': time.time()
+                }
+                # Cache for 5 minutes
+                cache.set(cache_key_raw, raw_data, 300)
+            
+            namespaces = raw_data['namespaces']
             context['k8s_namespaces'] = namespaces
             cache.delete(probing_key)
 
-            context['k8s_context'] = k8s.get_context()
-            namespace = request.GET.get('namespace')
-            all_namespaces = not bool(namespace)
+            context['k8s_context'] = raw_data['context']
+            
+            if request:
+                namespace = request.GET.get('namespace')
+                all_namespaces = not bool(namespace)
 
-            # Search and Pagination
-            from core.utils import paginate_list
-            search_query = request.GET.get('search', '')
-            page = request.GET.get('page', 1)
-            per_page = request.GET.get('per_page', 10)
-            target_tab = request.GET.get('tab', 'k8s_pods')
+                # Search and Pagination
+                search_query = request.GET.get('search', '')
+                page = request.GET.get('page', 1)
+                per_page = request.GET.get('per_page', 10)
+                target_tab = request.GET.get('tab', 'k8s_pods')
+            else:
+                namespace = None
+                all_namespaces = True
+                search_query = ''
+                page = 1
+                per_page = 10
+                target_tab = 'k8s_pods'
+
+            # Helper to filter by namespace if needed
+            def filter_by_ns(items, ns):
+                if not ns: return items
+                return [i for i in items if (i.metadata.namespace if hasattr(i, 'metadata') else i.get('namespace')) == ns]
 
             # Pods
-            pods = k8s.pods.list(namespace=namespace, all_namespaces=all_namespaces)
+            pods = filter_by_ns(raw_data['pods'], namespace)
             pod_pagination = paginate_list(
                 pods, 
                 page if target_tab == 'k8s_pods' else 1, 
@@ -291,7 +324,7 @@ class Module(BaseModule):
             context['pods_pagination'] = pod_pagination
 
             # Deployments
-            deployments = k8s.deployments.list(namespace=namespace, all_namespaces=all_namespaces)
+            deployments = filter_by_ns(raw_data['deployments'], namespace)
             deployment_pagination = paginate_list(
                 deployments,
                 page if target_tab == 'k8s_deployments' else 1,
@@ -303,7 +336,7 @@ class Module(BaseModule):
             context['deployments_pagination'] = deployment_pagination
 
             # Services
-            services = k8s.services.list(namespace=namespace, all_namespaces=all_namespaces)
+            services = filter_by_ns(raw_data['services'], namespace)
             service_pagination = paginate_list(
                 services,
                 page if target_tab == 'k8s_services' else 1,
@@ -313,6 +346,54 @@ class Module(BaseModule):
             )
             context['k8s_services'] = service_pagination['items']
             context['services_pagination'] = service_pagination
+
+            # ConfigMaps
+            configmaps = filter_by_ns(raw_data['configmaps'], namespace)
+            configmap_pagination = paginate_list(
+                configmaps,
+                page if target_tab == 'k8s_configmaps' else 1,
+                per_page if target_tab == 'k8s_configmaps' else 10,
+                search_query=search_query if target_tab == 'k8s_configmaps' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_configmaps'] = configmap_pagination['items']
+            context['configmaps_pagination'] = configmap_pagination
+
+            # Secrets
+            secrets = filter_by_ns(raw_data['secrets'], namespace)
+            secret_pagination = paginate_list(
+                secrets,
+                page if target_tab == 'k8s_secrets' else 1,
+                per_page if target_tab == 'k8s_secrets' else 10,
+                search_query=search_query if target_tab == 'k8s_secrets' else None,
+                search_fields=['name', 'namespace']
+            )
+            context['k8s_secrets'] = secret_pagination['items']
+            context['secrets_pagination'] = secret_pagination
+
+            # Events
+            events = filter_by_ns(raw_data['events'], namespace)
+            event_pagination = paginate_list(
+                events,
+                page if target_tab == 'k8s_events' else 1,
+                per_page if target_tab == 'k8s_events' else 10,
+                search_query=search_query if target_tab == 'k8s_events' else None,
+                search_fields=['message', 'reason', 'involvedObject.name']
+            )
+            context['k8s_events'] = event_pagination['items']
+            context['events_pagination'] = event_pagination
+
+            # Nodes
+            nodes = raw_data['nodes']
+            node_pagination = paginate_list(
+                nodes,
+                page if target_tab == 'k8s_nodes' else 1,
+                per_page if target_tab == 'k8s_nodes' else 10,
+                search_query=search_query if target_tab == 'k8s_nodes' else None,
+                search_fields=['name']
+            )
+            context['k8s_nodes'] = node_pagination['items']
+            context['nodes_pagination'] = node_pagination
 
             # ConfigMaps
             configmaps = k8s.configmaps.list(namespace=namespace, all_namespaces=all_namespaces)
